@@ -1,0 +1,49 @@
+{
+    "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "cifar10-inf",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "scripts/sample_diffusion_ddim.py",
+                "console": "integratedTerminal",
+                "args": ["--config", "configs/cifar10.yml", "--use_pretrained", "--timesteps" ,"100",
+                "--eta", "0", "--skip_type" ,"quad", "--ptq", "--weight_bit", "4", "--quant_mode", "qdiff",
+                "--quant_act","--act_bit", "8", "--a_sym","--split",
+                "--resume", "-l", "output",
+                "--cali_ckpt", "/fastdata/users/nadavg/sd/qdiff/cifar_w4a8_ckpt.pth",
+                ],
+            },
+            {
+                "name": "sdq-diff-4bw-inf",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "scripts/txt2img.py",
+                "console": "integratedTerminal",
+                "args": ["--prompt", "a puppy wearing a hat", "--plms", "--cond", "--ptq",
+                "--weight_bit", "4","--quant_mode", "qdiff","--no_grad_ckpt", "--split" ,"--n_samples", "5", "--resume",
+                "--quant_act", "--act_bit", "8", "--sm_abit", "16", "--outdir","output",
+                "--cali_ckpt", "/fastdata/users/nadavg/sd/qdiff/sd_w4a8_ckpt.pth"
+                ],
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "6"
+                }
+            },
+            {
+                "name": "sdq-diff-4bw-quantize",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "scripts/txt2img.py",
+                "console": "integratedTerminal",
+                "args": ["--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",
+                        "--weight_bit", "4","--quant_mode", "qdiff","--act_bit", "8","--cali_st", "25",
+                        "--cali_batch_size", "8", "--cali_n", "128","--no_grad_ckpt", "--split", "--running_stat",
+                        "--sm_abit","16","--cali_data_path","/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
+                        "--outdir", "output_quantization",
+                        ],
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "3"
+                }
+            },
+    ]
+}
