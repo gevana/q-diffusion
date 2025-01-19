@@ -27,6 +27,7 @@ def convert_module_to_f16(x):
 def convert_module_to_f32(x):
     pass
 
+DEBUG = False
 
 ## go
 class AttentionPool2d(nn.Module):
@@ -764,11 +765,15 @@ class UNetModel(nn.Module):
 
         h = x.type(self.dtype)
         # import ipdb; ipdb.set_trace()
-        for module in self.input_blocks:
+        for i,module in enumerate(self.input_blocks):
+            if DEBUG:
+                print(f'input block {i}')
             h = module(h, emb, context)
             hs.append(h)
         h = self.middle_block(h, emb, context)
-        for module in self.output_blocks:
+        for i,module in enumerate(self.output_blocks):
+            if DEBUG:
+                print(f'output block {i}')
             if self.split:
                 split = h.shape[1]
             else:

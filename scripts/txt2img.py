@@ -406,7 +406,7 @@ def main():
                 else:
                     logger.info("Initializing weight quantization parameters")
                     qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
-                    _ = qnn(cali_xs[:8].cuda(), cali_ts[:8].cuda(), cali_cs[:8].cuda())
+                    _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
                     logger.info("Initializing has done!") 
                 # Kwargs for weight rounding calibration
                 kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
@@ -447,7 +447,10 @@ def main():
                 if not opt.resume_w:
                     logger.info("Doing weight calibration")
                     recon_model(qnn)
+                    logger.info(f"finished weight Calibration Saving  checkpoint ...")
+                    torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
+                
                 if opt.quant_act:
                     logger.info("UNet model")
                     logger.info(model.model)                    
@@ -456,7 +459,7 @@ def main():
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():
                         inds = np.random.choice(cali_xs.shape[0], 16, replace=False)
-                        _ = qnn(cali_xs[inds].cuda(), cali_ts[inds].cuda(), cali_cs[inds].cuda())
+                        _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
                         if opt.running_stat:
                             logger.info('Running stat for activation quantization')
                             inds = np.arange(cali_xs.shape[0])
