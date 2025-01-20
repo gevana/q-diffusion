@@ -256,6 +256,12 @@ def main():
     )
 
     parser.add_argument(
+        "--multi_gpu",
+        action="store_false",
+        help="use multi_gpu for model",
+    )
+
+    parser.add_argument(
         "--act_bit",
         type=int,
         default=8,
@@ -266,6 +272,8 @@ def main():
         choices=["linear", "squant", "qdiff"], 
         help="quantization mode to use"
     )
+
+    
 
     # qdiff specific configs
     parser.add_argument(
@@ -362,8 +370,11 @@ def main():
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
+    multi_gpu = opt.multi_gpu
+    model.model.diffusion_model.multi_gpu = multi_gpu
 
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    
     model = model.to(device)
 
     if opt.plms:
@@ -387,7 +398,8 @@ def main():
             qnn = QuantModel(
                 model=sampler.model.model.diffusion_model, weight_quant_params=wq_params, act_quant_params=aq_params,
                 act_quant_mode="qdiff", sm_abit=opt.sm_abit)
-            qnn.cuda()
+            qnn.multi_gpu = multi_gpu
+            qnn.to(device)
             qnn.eval()
             # logging.info(qnn)
 
@@ -412,7 +424,7 @@ def main():
                 else:
                     logger.info("Initializing weight quantization parameters")
                     qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
-                    _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
+                    _ = qnn(cali_xs[:1].to(device), cali_ts[:1].to(device), cali_cs[:1].to(device))
                     logger.info("Initializing has done!") 
                 # Kwargs for weight rounding calibration
                 kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
@@ -465,16 +477,16 @@ def main():
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():
                         inds = np.random.choice(cali_xs.shape[0], 16, replace=False)
-                        _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
+                        _ = qnn(cali_xs[:1].to(device), cali_ts[:1].to(device), cali_cs[:1].to(device))
                         if opt.running_stat:
                             logger.info('Running stat for activation quantization')
                             inds = np.arange(cali_xs.shape[0])
                             np.random.shuffle(inds)
                             qnn.set_running_stat(True, opt.rs_sm_only)
                             for i in trange(int(cali_xs.size(0) / 16)):
-                                _ = qnn(cali_xs[inds[i * 16:(i + 1) * 16]].cuda(), 
-                                    cali_ts[inds[i * 16:(i + 1) * 16]].cuda(),
-                                    cali_cs[inds[i * 16:(i + 1) * 16]].cuda())
+                                _ = qnn(cali_xs[inds[i * 16:(i + 1) * 16]].to(device), 
+                                    cali_ts[inds[i * 16:(i + 1) * 16]].to(device),
+                                    cali_cs[inds[i * 16:(i + 1) * 16]].to(device))
                             qnn.set_running_stat(False, opt.rs_sm_only)
 
                     kwargs = dict(
