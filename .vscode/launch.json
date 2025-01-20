@@ -42,7 +42,23 @@
                         "--outdir", "output_quantization",
                         ],
                 "env": {
-                    "CUDA_VISIBLE_DEVICES": "3"
+                    "CUDA_VISIBLE_DEVICES": "2"
+                }
+            },
+            {
+                "name": "sdq-diff-8bw-quantize",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "scripts/txt2img.py",
+                "console": "integratedTerminal",
+                "args": ["--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",
+                        "--weight_bit", "8","--quant_mode", "qdiff","--act_bit", "8","--cali_st", "25",
+                        "--cali_batch_size", "2", "--cali_n", "128","--no_grad_ckpt", "--split", "--running_stat",
+                        "--sm_abit","16","--cali_data_path","/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
+                        "--outdir", "output_quantization",
+                        ],
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "2"
                 }
             },
     ]

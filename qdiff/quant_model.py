@@ -1,10 +1,12 @@
 import logging
 import torch.nn as nn
+import torch
 from qdiff.quant_block import get_specials, BaseQuantBlock
 from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock
 from qdiff.quant_block import QuantQKMatMul, QuantSMVMatMul, QuantBasicTransformerBlock, QuantAttnBlock
 from qdiff.quant_layer import QuantModule, StraightThrough
 from ldm.modules.attention import BasicTransformerBlock
+from ldm.modules.diffusionmodules.openaimodel import UNetModel
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +20,25 @@ class QuantModel(nn.Module):
         self.in_channels = model.in_channels
         if hasattr(model, 'image_size'):
             self.image_size = model.image_size
+        self.multi_gpu = False
         self.specials = get_specials(act_quant_params['leaf_param'])
         self.quant_module_refactor(self.model, weight_quant_params, act_quant_params)
         self.quant_block_refactor(self.model, weight_quant_params, act_quant_params)
+
+    def to(self,device):
+        print(f'{self.multi_gpu} model to {device}')
+        if not self.multi_gpu or device == torch.device('cpu'):
+            self.model.to(device)
+        else:
+            for name, module in self.named_children():
+                # Apply custom 'to()' for sub_module2
+                if isinstance(module, UNetModel):
+                    module.to(device)  # Custom device logic for sub_module2
+                else:
+                    module.to(device)  # Default device logic for other submodules
+
+        return self
+
 
     def quant_module_refactor(self, module: nn.Module, weight_quant_params: dict = {}, act_quant_params: dict = {}):
         """

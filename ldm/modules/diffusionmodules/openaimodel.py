@@ -314,6 +314,7 @@ class AttentionBlock(nn.Module):
             self.attention = QKVAttentionLegacy(self.num_heads)
 
         self.proj_out = zero_module(conv_nd(1, channels, channels, 1))
+        
 
     def forward(self, x):
         return checkpoint(self._forward, (x,), self.parameters(), True)   # TODO: check checkpoint usage, is True # TODO: fix the .half call!!!
@@ -538,6 +539,7 @@ class UNetModel(nn.Module):
         self.num_heads_upsample = num_heads_upsample
         self.predict_codebook_ids = n_embed is not None
         self.split = False
+        self.multi_gpu = False
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -744,6 +746,73 @@ class UNetModel(nn.Module):
         self.output_blocks.apply(convert_module_to_f32)
 
     def forward(self, x, timesteps=None, context=None, y=None,**kwargs):
+        if not self.multi_gpu:
+            return self._forward(x, timesteps, context, y, **kwargs)
+        else:
+            return self._forward_multigpu(x, timesteps, context, y, **kwargs)
+        
+        
+    def _forward_multigpu(self, x, timesteps=None, context=None, y=None,**kwargs):
+        """
+        Apply the model to an input batch.
+        :param x: an [N x C x ...] Tensor of inputs.
+        :param timesteps: a 1-D batch of timesteps.
+        :param context: conditioning plugged in via crossattn
+        :param y: an [N] Tensor of labels, if class-conditional.
+        :return: an [N x C x ...] Tensor of outputs.
+        """
+        # all inputs on gpu 0
+
+
+        assert (y is not None) == (
+            self.num_classes is not None
+        ), "must specify y if and only if the model is class-conditional"
+        hs = []
+        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
+        emb = self.time_embed(t_emb)
+        # assest emb.device == x.device 
+
+        if self.num_classes is not None:
+            assert y.shape == (x.shape[0],)
+            emb = emb + self.label_emb(y)
+        # assest emb.device == x.device
+
+        h = x.type(self.dtype)
+        # import ipdb; ipdb.set_trace()
+        # input blocks on gpu 0
+        for i,module in enumerate(self.input_blocks):
+            if DEBUG:
+                print(f'input block {i} on gpu {th.cuda.current_device()}')
+            h = module(h, emb, context)
+            hs.append(h)
+        # middle block on gpu 0
+        h = self.middle_block(h, emb, context)
+        
+        # output blocks on gpu 1
+        h, hs = h.to(th.device('cuda:1')), [h.to(th.device('cuda:1')) for h in hs]
+        emb = emb.to(h.device)
+        context = context.to(h.device) if context is not None else None
+
+        for i,module in enumerate(self.output_blocks):
+            if DEBUG:
+                print(f'output block {i} on gpu {th.cuda.current_device()}')
+            if self.split:
+                split = h.shape[1]
+            else:
+                split = 0
+            h = th.cat([h, hs.pop()], dim=1)
+            h = module(h, emb, context, split=split)
+        h = h.type(x.dtype)
+        #id_predictor and out on gpu 1
+        if self.predict_codebook_ids:
+            return self.id_predictor(h)
+        else:
+            return self.out(h)
+
+
+      
+        
+    def _forward(self, x, timesteps=None, context=None, y=None,**kwargs):
         """
         Apply the model to an input batch.
         :param x: an [N x C x ...] Tensor of inputs.
@@ -785,6 +854,28 @@ class UNetModel(nn.Module):
             return self.id_predictor(h)
         else:
             return self.out(h)
+
+    def to(self,device):
+        print(f'{self.multi_gpu} model to {device}')
+        if not self.multi_gpu or device == th.device('cpu'):
+            print(f'{self.multi_gpu} model to {device}')
+            return super().to(device)
+        else:
+            
+            device0= th.device('cuda:0')
+            device1= th.device('cuda:1')
+            print(f'{self.multi_gpu} model to {device0} and {device1}')
+            self.time_embed.to(device0)
+            self.input_blocks.to(device0)
+            self.middle_block.to(device0)
+            self.output_blocks.to(device1)
+            if self.predict_codebook_ids:
+                self.id_predictor.to(device1)
+            else:
+                self.out.to(device1)
+
+            
+        return self
 
 
 class EncoderUNetModel(nn.Module):
