@@ -57,11 +57,12 @@
                         "--weight_bit", "8","--quant_mode", "qdiff","--act_bit", "8","--cali_st", "25",
                         "--cali_batch_size", "8", "--cali_n", "128","--no_grad_ckpt", "--split", "--running_stat",
                         "--sm_abit","16","--cali_data_path","/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
-                        "--outdir", "output_quantization","--symmetric_weight",
-                        "--resume_w", "--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-01-19-18-27-17/wc_ckpt.pth"
+                        "--outdir", "output_quantization","--symmetric_weight","--quant_act",
+                        "--resume_w", "--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-01-20-23-58-31/wc_ckpt.pth",
+                        "--debug"
                         ],
                 "env": {
-                    "CUDA_VISIBLE_DEVICES": "3"
+                    "CUDA_VISIBLE_DEVICES": "4"
                 }
             },
     ]

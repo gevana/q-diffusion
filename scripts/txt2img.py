@@ -411,6 +411,8 @@ def main():
                     print(f"Calibration data shape debug reduction:")
                     cali_data = [x[:opt.cali_batch_size*2] for x in cali_data]
                     opt.cali_iters = 20
+                    opt.cali_iters_a = 50
+
 
                 gc.collect()
                 logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape} {cali_data[2].shape}")
@@ -483,21 +485,22 @@ def main():
                     # Initialize activation quantization parameters
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():
-                        inds = np.random.choice(cali_xs.shape[0], 16, replace=False)
-                        _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
+                        act_bs = 8 
+                        inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
+                        _ = qnn(cali_xs[inds].cuda(), cali_ts[inds].cuda(), cali_cs[inds].cuda())
                         if opt.running_stat:
                             logger.info('Running stat for activation quantization')
                             inds = np.arange(cali_xs.shape[0])
                             np.random.shuffle(inds)
                             qnn.set_running_stat(True, opt.rs_sm_only)
-                            for i in trange(int(cali_xs.size(0) / 16)):
-                                _ = qnn(cali_xs[inds[i * 16:(i + 1) * 16]].cuda(), 
-                                    cali_ts[inds[i * 16:(i + 1) * 16]].cuda(),
-                                    cali_cs[inds[i * 16:(i + 1) * 16]].cuda())
+                            for i in trange(int(cali_xs.size(0) / act_bs)):
+                                _ = qnn(cali_xs[inds[i * act_bs:(i + 1) * act_bs]].cuda(), 
+                                    cali_ts[inds[i * act_bs:(i + 1) * act_bs]].cuda(),
+                                    cali_cs[inds[i * act_bs:(i + 1) * act_bs]].cuda())
                             qnn.set_running_stat(False, opt.rs_sm_only)
 
                     kwargs = dict(
-                        cali_data=cali_data, batch_size=opt.cali_batch_size, iters=opt.cali_iters_a, act_quant=True, 
+                        cali_data=cali_data, batch_size=opt.cali_batch_size//2, iters=opt.cali_iters_a, act_quant=True, 
                         opt_mode='mse', lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond)
                     recon_model(qnn)
                     qnn.set_quant_state(weight_quant=True, act_quant=True)
