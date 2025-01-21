@@ -250,6 +250,12 @@ def main():
         help="int bit for weight quantization",
     )
     parser.add_argument(
+        "--symmetric_weight",
+        action="store_true",
+        help="symetric weight quantization",
+    )
+
+    parser.add_argument(
         "--act_bit",
         type=int,
         default=8,
@@ -328,6 +334,10 @@ def main():
         "--verbose", action="store_true",
         help="print out info like quantized model arch"
     )
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="debuf with small dataset"
+    )
     opt = parser.parse_args()
 
     if opt.laion400m:
@@ -370,7 +380,7 @@ def main():
         if opt.split:
             setattr(sampler.model.model.diffusion_model, "split", True)
         if opt.quant_mode == 'qdiff':
-            wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse'}
+            wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse','symmetric':opt.symmetric_weight}
             aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 'leaf_param':  opt.quant_act}
             if opt.resume:
                 logger.info('Load with min-max quick initialization')
@@ -397,6 +407,13 @@ def main():
                 sample_data = torch.load(opt.cali_data_path)
                 cali_data = get_train_samples(opt, sample_data, opt.ddim_steps)
                 del(sample_data)
+                if opt.debug:
+                    print(f"Calibration data shape debug reduction:")
+                    cali_data = [x[:opt.cali_batch_size*2] for x in cali_data]
+                    opt.cali_iters = 20
+                    opt.cali_iters_a = 50
+
+
                 gc.collect()
                 logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape} {cali_data[2].shape}")
 
@@ -448,6 +465,16 @@ def main():
                     logger.info("Doing weight calibration")
                     recon_model(qnn)
                     logger.info(f"finished weight Calibration Saving  checkpoint ...")
+                    for m in qnn.model.modules():
+                        if isinstance(m, AdaRoundQuantizer):
+                            m.zero_point = nn.Parameter(m.zero_point)
+                            m.delta = nn.Parameter(m.delta)
+                        elif isinstance(m, UniformAffineQuantizer) and opt.quant_act:
+                            if m.zero_point is not None:
+                                if not torch.is_tensor(m.zero_point):
+                                    m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
+                                else:
+                                    m.zero_point = nn.Parameter(m.zero_point)
                     torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
@@ -458,21 +485,22 @@ def main():
                     # Initialize activation quantization parameters
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():
-                        inds = np.random.choice(cali_xs.shape[0], 16, replace=False)
-                        _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
+                        act_bs = 8 
+                        inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
+                        _ = qnn(cali_xs[inds].cuda(), cali_ts[inds].cuda(), cali_cs[inds].cuda())
                         if opt.running_stat:
                             logger.info('Running stat for activation quantization')
                             inds = np.arange(cali_xs.shape[0])
                             np.random.shuffle(inds)
                             qnn.set_running_stat(True, opt.rs_sm_only)
-                            for i in trange(int(cali_xs.size(0) / 16)):
-                                _ = qnn(cali_xs[inds[i * 16:(i + 1) * 16]].cuda(), 
-                                    cali_ts[inds[i * 16:(i + 1) * 16]].cuda(),
-                                    cali_cs[inds[i * 16:(i + 1) * 16]].cuda())
+                            for i in trange(int(cali_xs.size(0) / act_bs)):
+                                _ = qnn(cali_xs[inds[i * act_bs:(i + 1) * act_bs]].cuda(), 
+                                    cali_ts[inds[i * act_bs:(i + 1) * act_bs]].cuda(),
+                                    cali_cs[inds[i * act_bs:(i + 1) * act_bs]].cuda())
                             qnn.set_running_stat(False, opt.rs_sm_only)
 
                     kwargs = dict(
-                        cali_data=cali_data, batch_size=opt.cali_batch_size, iters=opt.cali_iters_a, act_quant=True, 
+                        cali_data=cali_data, batch_size=opt.cali_batch_size//2, iters=opt.cali_iters_a, act_quant=True, 
                         opt_mode='mse', lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond)
                     recon_model(qnn)
                     qnn.set_quant_state(weight_quant=True, act_quant=True)
