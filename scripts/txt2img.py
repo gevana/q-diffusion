@@ -334,6 +334,10 @@ def main():
         "--verbose", action="store_true",
         help="print out info like quantized model arch"
     )
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="debuf with small dataset"
+    )
     opt = parser.parse_args()
 
     if opt.laion400m:
@@ -403,6 +407,11 @@ def main():
                 sample_data = torch.load(opt.cali_data_path)
                 cali_data = get_train_samples(opt, sample_data, opt.ddim_steps)
                 del(sample_data)
+                if opt.debug:
+                    print(f"Calibration data shape debug reduction:")
+                    cali_data = [x[:opt.cali_batch_size*2] for x in cali_data]
+                    opt.cali_iters = 20
+
                 gc.collect()
                 logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape} {cali_data[2].shape}")
 
@@ -454,6 +463,16 @@ def main():
                     logger.info("Doing weight calibration")
                     recon_model(qnn)
                     logger.info(f"finished weight Calibration Saving  checkpoint ...")
+                    for m in qnn.model.modules():
+                        if isinstance(m, AdaRoundQuantizer):
+                            m.zero_point = nn.Parameter(m.zero_point)
+                            m.delta = nn.Parameter(m.delta)
+                        elif isinstance(m, UniformAffineQuantizer) and opt.quant_act:
+                            if m.zero_point is not None:
+                                if not torch.is_tensor(m.zero_point):
+                                    m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
+                                else:
+                                    m.zero_point = nn.Parameter(m.zero_point)
                     torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
