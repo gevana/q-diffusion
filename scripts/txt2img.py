@@ -364,6 +364,10 @@ def main():
     )
     logger = logging.getLogger(__name__)
 
+    logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
+    if opt.resume_w:
+        logger.info(f"Resume_w from {opt.cali_ckpt}")
+
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
 
@@ -420,6 +424,10 @@ def main():
                 cali_xs, cali_ts, cali_cs = cali_data
                 if opt.resume_w:
                     resume_cali_model(qnn, opt.cali_ckpt, cali_data, False, cond=opt.cond)
+                    for m in qnn.model.modules():
+                        if isinstance(m,UniformAffineQuantizer):
+                            if m.inited:
+                                import ipdb; ipdb.set_trace()
                 else:
                     logger.info("Initializing weight quantization parameters")
                     qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
@@ -469,25 +477,19 @@ def main():
                         if isinstance(m, AdaRoundQuantizer):
                             m.zero_point = nn.Parameter(m.zero_point)
                             m.delta = nn.Parameter(m.delta)
-                        elif isinstance(m, UniformAffineQuantizer) and opt.quant_act:
-                            if m.zero_point is not None:
-                                if not torch.is_tensor(m.zero_point):
-                                    m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
-                                else:
-                                    m.zero_point = nn.Parameter(m.zero_point)
                     torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
                 if opt.quant_act:
                     logger.info("UNet model")
-                    logger.info(model.model)                    
+                    #logger.info(model.model)                    
                     logger.info("Doing activation calibration")
                     # Initialize activation quantization parameters
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():
                         act_bs = 8 
                         inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
-                        _ = qnn(cali_xs[inds].cuda(), cali_ts[inds].cuda(), cali_cs[inds].cuda())
+                        _ = qnn(cali_xs[inds[:act_bs//2]].cuda(), cali_ts[inds[:act_bs//2]].cuda(), cali_cs[inds[act_bs//2]].cuda())
                         if opt.running_stat:
                             logger.info('Running stat for activation quantization')
                             inds = np.arange(cali_xs.shape[0])
@@ -498,7 +500,7 @@ def main():
                                     cali_ts[inds[i * act_bs:(i + 1) * act_bs]].cuda(),
                                     cali_cs[inds[i * act_bs:(i + 1) * act_bs]].cuda())
                             qnn.set_running_stat(False, opt.rs_sm_only)
-
+                        gc.collect()
                     kwargs = dict(
                         cali_data=cali_data, batch_size=opt.cali_batch_size//2, iters=opt.cali_iters_a, act_quant=True, 
                         opt_mode='mse', lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond)
