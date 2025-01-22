@@ -170,7 +170,7 @@ class UniformAffineQuantizer(nn.Module):
                     # L_p norm minimization as described in LAPQ
                     # https://arxiv.org/abs/1911.07190
                     score = lp_loss(x, x_q, p=2.4, reduction='all')
-                    if score < best_score:
+                    if score < best_score or i == 0:
                         best_score = score
                         delta = (new_max - new_min) / (2 ** self.n_bits - 1) \
                             if not self.always_zero else new_max / (2 ** self.n_bits - 1)
