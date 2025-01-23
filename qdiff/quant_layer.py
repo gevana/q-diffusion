@@ -59,7 +59,7 @@ class UniformAffineQuantizer(nn.Module):
         self.channel_wise = channel_wise
         self.scale_method = scale_method
         self.running_stat = False
-        self.always_zero = always_zero
+        self.always_zero = symmetric
         if self.leaf_param:
             self.x_min, self.x_max = None, None
 
@@ -180,12 +180,19 @@ class UniformAffineQuantizer(nn.Module):
 
         return delta, zero_point
 
-    def quantize(self, x, max, min):
-        delta = (max - min) / (2 ** self.n_bits - 1) if not self.always_zero else max / (2 ** self.n_bits - 1)
+    def quantize(self, x, x_max, x_min):
+        if self.sym:
+            x_absmax = max(abs(x_min), x_max)
+            delta = x_absmax / self.n_levels
+        else:
+            delta = (max - min) / (2 ** self.n_bits - 1) 
         zero_point = (- min / delta).round() if not self.always_zero else 0
         # we assume weight quantization is always signed
         x_int = torch.round(x / delta)
-        x_quant = torch.clamp(x_int + zero_point, 0, self.n_levels - 1)
+        if self.sym:
+            x_quant = torch.clamp(x_int + zero_point,  -self.n_levels - 1, self.n_levels) 
+        else:
+            x_quant = torch.clamp(x_int + zero_point, 0, self.n_levels - 1)
         x_float_q = (x_quant - zero_point) * delta
         return x_float_q
 
