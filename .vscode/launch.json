@@ -58,10 +58,11 @@
                         "--cali_batch_size", "8", "--cali_n", "128","--no_grad_ckpt", "--split", "--running_stat",
                         "--sm_abit","16","--cali_data_path","/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
                         "--outdir", "output_quantization","--symmetric_weight","--quant_act",
-                        "--resume_w", 
+                        //"--resume_w", 
                         //"--cali_ckpt", "/fastdata/users/nadavg/sd/qdiff/output_quantization/2025-01-20-23-58-31/wc_ckpt.pth",
-                        "--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/8bit_sym/wc_ckpt.pth",
-                        //"--debug"
+                        //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/8bit_sym/wc_ckpt.pth",
+                        "--cali_ckpt", "/fastdata/users/nadavg/sd/qdiff/output_quantization/2025-01-22-16-40-17/wc_ckpt.pth", // wbit8 sym weight
+                        "--debug"
                         ],
                 "env": {
                     "CUDA_VISIBLE_DEVICES": "5"

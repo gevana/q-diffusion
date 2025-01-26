@@ -46,7 +46,7 @@ class UniformAffineQuantizer(nn.Module):
     :param scale_method: determines the quantization scale and zero point
     """
     def __init__(self, n_bits: int = 8, symmetric: bool = False, channel_wise: bool = False, scale_method: str = 'max',
-                 leaf_param: bool = False, always_zero: bool = False):
+                 leaf_param: bool = False, always_zero: bool = False,debug = False):
         super(UniformAffineQuantizer, self).__init__()
         self.sym = symmetric
         # assert 2 <= n_bits <= 8, 'bitwidth not supported'
@@ -60,6 +60,7 @@ class UniformAffineQuantizer(nn.Module):
         self.scale_method = scale_method
         self.running_stat = False
         self.always_zero = symmetric
+        self.debug = debug
         if self.leaf_param:
             self.x_min, self.x_max = None, None
 
@@ -163,7 +164,8 @@ class UniformAffineQuantizer(nn.Module):
                 x_max = x.max()
                 x_min = x.min()
                 best_score = 1e+10
-                for i in range(80):
+                num_iter = 80 if not self.debug else 2
+                for i in range(num_iter):
                     new_max = x_max * (1.0 - (i * 0.01))
                     new_min = x_min * (1.0 - (i * 0.01))
                     x_q = self.quantize(x, new_max, new_min)
@@ -172,9 +174,14 @@ class UniformAffineQuantizer(nn.Module):
                     score = lp_loss(x, x_q, p=2.4, reduction='all')
                     if score < best_score or i == 0:
                         best_score = score
-                        delta = (new_max - new_min) / (2 ** self.n_bits - 1) \
-                            if not self.always_zero else new_max / (2 ** self.n_bits - 1)
-                        zero_point = (- new_min / delta).round() if not self.always_zero else 0
+                        if self.sym:
+                            x_absmax = max(abs(new_min), new_max)
+                            delta = x_absmax / self.n_levels
+                            zero_point =0
+                        else:
+                            delta = (new_max - new_min) / (2 ** self.n_bits - 1) 
+                            #if not self.always_zero else new_max / (2 ** self.n_bits - 1)
+                            zero_point = (- new_min / delta).round()  #if not self.always_zero else 0
             else:
                 raise NotImplementedError
 
@@ -185,8 +192,8 @@ class UniformAffineQuantizer(nn.Module):
             x_absmax = max(abs(x_min), x_max)
             delta = x_absmax / self.n_levels
         else:
-            delta = (max - min) / (2 ** self.n_bits - 1) 
-        zero_point = (- min / delta).round() if not self.always_zero else 0
+            delta = (x_max - x_min) / (2 ** self.n_bits - 1) 
+        zero_point = (- x_min / delta).round() if not self.always_zero else 0
         # we assume weight quantization is always signed
         x_int = torch.round(x / delta)
         if self.sym:

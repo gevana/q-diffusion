@@ -386,8 +386,10 @@ def main():
         if opt.split:
             setattr(sampler.model.model.diffusion_model, "split", True)
         if opt.quant_mode == 'qdiff':
-            wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse','symmetric':opt.symmetric_weight}
-            aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 'leaf_param':  opt.quant_act}
+            wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
+                         'symmetric':opt.symmetric_weight,'debug':opt.debug}
+            aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
+                         'leaf_param':  opt.quant_act, 'debug':opt.debug}
             if opt.resume:
                 logger.info('Load with min-max quick initialization')
                 wq_params['scale_method'] = 'max'
