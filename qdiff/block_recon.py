@@ -6,7 +6,7 @@ from qdiff.quant_model import QuantModel
 from qdiff.quant_block import BaseQuantBlock
 from qdiff.adaptive_rounding import AdaRoundQuantizer
 from qdiff.utils import save_grad_data, save_inp_oup_data
-
+import wandb
 logger = logging.getLogger(__name__)
 
 
@@ -226,9 +226,12 @@ class LossFunction:
             raise NotImplementedError
 
         total_loss = rec_loss + round_loss
+
         if self.count % 500 == 0:
             logger.info('Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f})\tb={:.2f}\tcount={}'.format(
                   float(total_loss), float(rec_loss), float(round_loss), b, self.count))
+        if self.count % 50 ==0: 
+            wandb.log(step=self.count, data={f'{self.block.full_name}/Total loss': total_loss, f'{self.block.full_name}/Rec loss': rec_loss, f'{self.block.full_name}/Round loss': round_loss})
         return total_loss
 
 

@@ -44,6 +44,7 @@ dependencies:
     - libtmux
     - netron
     - ipdb
+    - wandb
     #- ipykernel
     - git+https://github.com/openai/CLIP.git@main#egg=clip
     - -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
