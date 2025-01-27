@@ -366,7 +366,9 @@ def main():
 
     logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
     if opt.resume_w:
-        logger.info(f"Resume_w from {opt.cali_ckpt}")
+        logger.info(f"Resume_w from {opt.resume_w} {opt.cali_ckpt}")
+    if opt.resume:
+        logger.info(f"Resume from {opt.resume=} {opt.cali_ckpt}")
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
@@ -384,8 +386,10 @@ def main():
         if opt.split:
             setattr(sampler.model.model.diffusion_model, "split", True)
         if opt.quant_mode == 'qdiff':
-            wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse','symmetric':opt.symmetric_weight}
-            aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 'leaf_param':  opt.quant_act}
+            wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
+                         'symmetric':opt.symmetric_weight,'debug':opt.debug}
+            aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
+                         'leaf_param':  opt.quant_act, 'debug':opt.debug}
             if opt.resume:
                 logger.info('Load with min-max quick initialization')
                 wq_params['scale_method'] = 'max'
@@ -489,7 +493,7 @@ def main():
                     with torch.no_grad():
                         act_bs = 8 
                         inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
-                        _ = qnn(cali_xs[inds[:act_bs//2]].cuda(), cali_ts[inds[:act_bs//2]].cuda(), cali_cs[inds[act_bs//2]].cuda())
+                        _ = qnn(cali_xs[inds[:act_bs//2]].cuda(), cali_ts[inds[:act_bs//2]].cuda(), cali_cs[inds[:act_bs//2]].cuda())
                         if opt.running_stat:
                             logger.info('Running stat for activation quantization')
                             inds = np.arange(cali_xs.shape[0])

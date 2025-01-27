@@ -55,7 +55,10 @@ class AdaRoundQuantizer(nn.Module):
         else:
             raise ValueError('Wrong rounding mode')
 
-        x_quant = torch.clamp(x_int + self.zero_point, 0, self.n_levels - 1)
+        if self.sym :
+            x_quant = torch.clamp(x_int + self.zero_point, -self.n_levels - 1, self.n_levels)
+        else:
+            x_quant = torch.clamp(x_int + self.zero_point, 0, self.n_levels - 1)
         x_float_q = (x_quant - self.zero_point) * self.delta
 
         return x_float_q
