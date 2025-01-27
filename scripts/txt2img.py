@@ -28,6 +28,9 @@ from qdiff.quant_layer import UniformAffineQuantizer
 from qdiff.utils import resume_cali_model, get_train_samples
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from transformers import AutoFeatureExtractor
+from src.utils.torch_utils import add_full_name_to_module
+import wandb
+from scripts.gen_image import gen_image_from_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -365,6 +368,26 @@ def main():
     logger = logging.getLogger(__name__)
 
     logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
+    run = wandb.init(
+            # Set the project where this run will be logged
+            project="q-diff",
+            # Track hyperparameters and run metadata
+            config={
+                "weight_bit": opt.weight_bit,
+                "symmetric_weight": opt.symmetric_weight,
+                "act_quant": opt.quant_act,
+                "act_bit": opt.act_bit,
+                "sm_abit": opt.sm_abit,
+                "resume_w": opt.resume_w,
+                "resume": opt.resume,
+                "cali_ckpt": opt.cali_ckpt,
+                "prompt": opt.prompt,
+                "debug": opt.debug,
+                
+            },
+    )
+
+
     if opt.resume_w:
         logger.info(f"Resume_w from {opt.resume_w} {opt.cali_ckpt}")
     if opt.resume:
@@ -402,7 +425,8 @@ def main():
             qnn.cuda()
             qnn.eval()
             # logging.info(qnn)
-
+            add_full_name_to_module(qnn)
+        
             if opt.no_grad_ckpt:
                 logger.info('Not use gradient checkpointing for transformer blocks')
                 qnn.set_grad_ckpt(False)
@@ -442,6 +466,9 @@ def main():
                             iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                             warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond)
                 
+                grid_wq_only = gen_image_from_prompt(qnn,sampler=sampler,prompt=opt.prompt,)
+                wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
+
                 def recon_model(model):
                     """
                     Block reconstruction. For the first and last layers, we can only apply layer reconstruction.
@@ -458,17 +485,17 @@ def main():
                             
                         if isinstance(module, QuantModule):
                             if module.ignore_reconstruction is True:
-                                logger.info('Ignore reconstruction of layer {}'.format(name))
+                                logger.info('Ignore reconstruction of layer {}'.format(module.full_name))
                                 continue
                             else:
-                                logger.info('Reconstruction for layer {}'.format(name))
+                                logger.info('Reconstruction for layer {}'.format(module.full_name))
                                 layer_reconstruction(qnn, module, **kwargs)
                         elif isinstance(module, BaseQuantBlock):
                             if module.ignore_reconstruction is True:
-                                logger.info('Ignore reconstruction of block {}'.format(name))
+                                logger.info('Ignore reconstruction of block {}'.format(module.full_name))
                                 continue
                             else:
-                                logger.info('Reconstruction for block {}'.format(name))
+                                logger.info('Reconstruction for block {}'.format(module.full_name))
                                 block_reconstruction(qnn, module, **kwargs)
                         else:
                             recon_model(module)
@@ -476,7 +503,7 @@ def main():
                 if not opt.resume_w:
                     logger.info("Doing weight calibration")
                     recon_model(qnn)
-                    logger.info(f"finished weight Calibration Saving  checkpoint ...")
+                    logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
                     for m in qnn.model.modules():
                         if isinstance(m, AdaRoundQuantizer):
                             m.zero_point = nn.Parameter(m.zero_point)
@@ -511,7 +538,7 @@ def main():
                     recon_model(qnn)
                     qnn.set_quant_state(weight_quant=True, act_quant=True)
                 
-                logger.info("Saving calibrated quantized UNet model")
+                logger.info(f"Saving calibrated quantized UNet model to {outpath}/ckpt.pth")
                 for m in qnn.model.modules():
                     if isinstance(m, AdaRoundQuantizer):
                         m.zero_point = nn.Parameter(m.zero_point)
@@ -619,6 +646,9 @@ def main():
                     img = put_watermark(img, wm_encoder)
                     img.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
                     grid_count += 1
+
+                    #upload image to wandb
+                    wandb.log({"grid act and weights": [wandb.Image(grid)]})
 
                 toc = time.time()
 
