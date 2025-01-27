@@ -466,8 +466,7 @@ def main():
                             iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                             warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond)
                 
-                grid_wq_only = gen_image_from_prompt(qnn,sampler=sampler,prompt=opt.prompt,)
-                wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
+
 
                 def recon_model(model):
                     """
@@ -511,6 +510,10 @@ def main():
                     torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
+                grid_wq_only = gen_image_from_prompt(qnn,sampler=sampler,prompt=opt.prompt,)
+                wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
+
+
                 if opt.quant_act:
                     logger.info("UNet model")
                     #logger.info(model.model)                    
