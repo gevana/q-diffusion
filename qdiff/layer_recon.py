@@ -40,6 +40,8 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     model.set_quant_state(False, False)
     layer.set_quant_state(True, act_quant)
     round_mode = 'learned_hard_sigmoid'
+    prefix = f"{layer.full_name}_weight_opt" if not act_quant else f"{layer.full_name}_act_opt"
+
 
     if not include_act_func:
         org_act_func = layer.activation_function
@@ -76,7 +78,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
 
     loss_func = LossFunction(layer, round_loss=loss_mode, weight=weight,
                              max_count=iters, rec_loss=rec_loss, b_range=b_range,
-                             decay_start=0, warmup=warmup, p=p)
+                             decay_start=0, warmup=warmup, p=p,act_quant=act_quant)
 
     # Save data before optimizing the rounding
     # cached_inps, cached_outs = save_inp_oup_data(
@@ -97,7 +99,12 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         optimizer.zero_grad()
         out_quant = layer(cur_inp)
 
-        err = loss_func(out_quant, cur_out, cur_grad)
+        err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+        wandb.log(data={f"{prefix}/loss": err,f"{prefix}/lr": optimizer.param_groups[0]['lr'],
+                                f"{prefix}/rec_loss": rec_loss, f"{prefix}/round_loss": round_loss,
+                                #f"{prefix}/iter": i
+                                })
+
         err.backward(retain_graph=True)
         if multi_gpu:
             raise NotImplementedError
@@ -129,7 +136,8 @@ class LossFunction:
                  b_range: tuple = (10, 2),
                  decay_start: float = 0.0,
                  warmup: float = 0.0,
-                 p: float = 2.):
+                 p: float = 2.,
+                 act_quant = False):
 
         self.layer = layer
         self.round_loss = round_loss
@@ -141,6 +149,7 @@ class LossFunction:
         self.temp_decay = LinearTempDecay(max_count, rel_start_decay=warmup + (1 - warmup) * decay_start,
                                           start_b=b_range[0], end_b=b_range[1])
         self.count = 0
+        self.act_quant =act_quant
 
     def __call__(self, pred, tgt, grad=None):
         """
@@ -180,10 +189,15 @@ class LossFunction:
         if self.count % 500 == 0:
             logger.info('Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f})\tb={:.2f}\tcount={}'.format(
                   float(total_loss), float(rec_loss), float(round_loss), b, self.count))
-        if self.count % 50 ==0: 
-            wandb.log(step=self.count, 
-                      data={f'{self.layer.full_name}/Total loss': total_loss, f'{self.layer.full_name}/Rec loss': rec_loss,
-                             f'{self.layer.full_name}/Round loss': round_loss})
+        
+        # if self.count % 5 ==0:
+        #     if self.act_quant:
+        #         prefix = f"{self.layer.full_name}_act_opt"
+        #     else:
+        #         prefix = f"{self.layer.full_name}_weight_opt"
+        #     wandb.log(step=self.count, 
+        #               data={f'{prefix}/Total loss': total_loss, f'{prefix}/Rec loss': rec_loss,
+        #                      f'{prefix}/Round loss': round_loss})
 
-        return total_loss
+        return total_loss , rec_loss, round_loss
 

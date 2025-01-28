@@ -510,8 +510,9 @@ def main():
                     torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
-                grid_wq_only = gen_image_from_prompt(qnn,sampler=sampler,prompt=opt.prompt,)
-                wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
+                if False:
+                    grid_wq_only = gen_image_from_prompt(model,sampler=sampler,prompt=opt.prompt,)
+                    wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
 
 
                 if opt.quant_act:
