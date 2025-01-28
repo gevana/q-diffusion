@@ -39,6 +39,8 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     model.set_quant_state(False, False)
     block.set_quant_state(True, act_quant)
     round_mode = 'learned_hard_sigmoid'
+    
+    prefix = f"{block.full_name}_weight_opt" if not act_quant else f"{block.full_name}_act_opt"
 
     if not include_act_func:
         org_act_func = block.activation_function
@@ -142,7 +144,12 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
         else:
             out_quant = block(cur_inp)
 
-        err = loss_func(out_quant, cur_out, cur_grad)
+        err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+        wandb.log(data={f"{prefix}/loss": err,f"{prefix}/lr": optimizer.param_groups[0]['lr'],
+                                f"{prefix}/rec_loss": rec_loss, f"{prefix}/round_loss": round_loss,
+                                #f"{prefix}/iter": i
+                                })
+
         err.backward(retain_graph=True)
         if multi_gpu:
             raise NotImplementedError
@@ -230,9 +237,9 @@ class LossFunction:
         if self.count % 500 == 0:
             logger.info('Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f})\tb={:.2f}\tcount={}'.format(
                   float(total_loss), float(rec_loss), float(round_loss), b, self.count))
-        if self.count % 50 ==0: 
-            wandb.log(step=self.count, data={f'{self.block.full_name}/Total loss': total_loss, f'{self.block.full_name}/Rec loss': rec_loss, f'{self.block.full_name}/Round loss': round_loss})
-        return total_loss
+        #if self.count % 50 ==0: 
+        #    wandb.log(step=self.count, data={f'{self.block.full_name}/Total loss': total_loss, f'{self.block.full_name}/Rec loss': rec_loss, f'{self.block.full_name}/Round loss': round_loss})
+        return total_loss, rec_loss, round_loss
 
 
 class LinearTempDecay:
