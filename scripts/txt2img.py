@@ -370,7 +370,7 @@ def main():
     logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
     run = wandb.init(
             # Set the project where this run will be logged
-            project="q-diff",
+            project="q-diff" if not opt.debug else "q-diff-debug",
             # Track hyperparameters and run metadata
             config={
                 "weight_bit": opt.weight_bit,
@@ -382,8 +382,7 @@ def main():
                 "resume": opt.resume,
                 "cali_ckpt": opt.cali_ckpt,
                 "prompt": opt.prompt,
-                "debug": opt.debug,
-                
+                "debug": opt.debug,   
             },
     )
 

@@ -41,7 +41,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     layer.set_quant_state(True, act_quant)
     round_mode = 'learned_hard_sigmoid'
     prefix = f"{layer.full_name}_weight_opt" if not act_quant else f"{layer.full_name}_act_opt"
-
+    delta_dict={}
 
     if not include_act_func:
         org_act_func = layer.activation_function
@@ -100,10 +100,18 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         out_quant = layer(cur_inp)
 
         err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+
+        if act_quant: 
+            delta_dict[f'{prefix}/delta'] = layer.act_quantizer.delta.detach().cpu().numpy()
+            if layer.split != 0 and layer.act_quantizer_0.delta is not None:
+                delta_dict[f'{prefix}/delta_0'] = layer.act_quantizer_0.delta.detach().cpu().numpy()
+
+
         wandb.log(data={f"{prefix}/loss": err,f"{prefix}/lr": optimizer.param_groups[0]['lr'],
-                                f"{prefix}/rec_loss": rec_loss, f"{prefix}/round_loss": round_loss,
-                                #f"{prefix}/iter": i
-                                })
+                        f"{prefix}/rec_loss": rec_loss, f"{prefix}/round_loss": round_loss,
+                        f"{prefix}/iter": i, f"{prefix}/b": loss_func.temp_decay(i),
+                        **delta_dict,
+                        })
 
         err.backward(retain_graph=True)
         if multi_gpu:
