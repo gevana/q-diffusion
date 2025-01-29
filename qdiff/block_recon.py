@@ -41,6 +41,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     round_mode = 'learned_hard_sigmoid'
     
     prefix = f"{block.full_name}_weight_opt" if not act_quant else f"{block.full_name}_act_opt"
+    delta_dict={}
 
     if not include_act_func:
         org_act_func = block.activation_function
@@ -99,13 +100,14 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
             if block.act_quantizer_w.n_bits != 16:
                 opt_params += [block.act_quantizer_w.delta]
 
+        
         for name, module in block.named_modules():
             if isinstance(module, QuantModule):
                 if module.act_quantizer.delta is not None:
                     opt_params += [module.act_quantizer.delta]
                 if module.split != 0 and module.act_quantizer_0.delta is not None:
                     opt_params += [module.act_quantizer_0.delta]
-
+               
         optimizer = torch.optim.Adam(opt_params, lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=0.)
 
@@ -145,9 +147,21 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
             out_quant = block(cur_inp)
 
         err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+
+        if act_quant:
+            for name, module in block.named_modules():
+                if isinstance(module, QuantModule):
+                    if module.act_quantizer.delta is not None:
+                        delta_dict[f'{prefix}/{name}_delta']=module.act_quantizer.delta.detach().cpu().numpy()
+                    if module.split != 0 and module.act_quantizer_0.delta is not None:
+                        delta_dict[f'{prefix}/{name}_delta_0']=module.act_quantizer_0.delta.detach().cpu().numpy()
+
+
+
         wandb.log(data={f"{prefix}/loss": err,f"{prefix}/lr": optimizer.param_groups[0]['lr'],
                                 f"{prefix}/rec_loss": rec_loss, f"{prefix}/round_loss": round_loss,
-                                #f"{prefix}/iter": i
+                                f"{prefix}/iter": i, f"{prefix}/b": loss_func.temp_decay(i),
+                                **delta_dict,
                                 })
 
         err.backward(retain_graph=True)
