@@ -253,6 +253,11 @@ def main():
     )
 
     parser.add_argument(
+        "--accum_batches", action="store_true", 
+        help="accumulate gradients for activation quantization"
+    )
+
+    parser.add_argument(
         "--weight_bit",
         type=int,
         default=8,
@@ -383,6 +388,7 @@ def main():
                 "symmetric_weight": opt.symmetric_weight,
                 "act_quant": opt.quant_act,
                 "act_quant_ops": opt.quant_act_ops,
+                "accum_batches": opt.accum_batches,
                 "act_bit": opt.act_bit,
                 "sm_abit": opt.sm_abit,
                 "resume_w": opt.resume_w,
@@ -448,8 +454,8 @@ def main():
                 if opt.debug:
                     print(f"Calibration data shape debug reduction:")
                     cali_data = [x[:opt.cali_batch_size*2] for x in cali_data]
-                    opt.cali_iters = 20
-                    opt.cali_iters_a = 50
+                    opt.cali_iters = 20 if not opt.accum_batches else 24
+                    opt.cali_iters_a = 20 if not opt.accum_batches else 32
 
 
                 gc.collect()
@@ -470,9 +476,8 @@ def main():
                 # Kwargs for weight rounding calibration
                 kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
                             iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
-                            warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond)
-                
-
+                            warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
+                            accum_batches= 4 if opt.accum_batches else 1)
 
                 def recon_model(model):
                     """
@@ -528,7 +533,7 @@ def main():
                     # Initialize activation quantization parameters
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():
-                        act_bs = 8 
+                        act_bs = 8//2
                         inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
                         _ = qnn(cali_xs[inds[:act_bs//2]].cuda(), cali_ts[inds[:act_bs//2]].cuda(), cali_cs[inds[:act_bs//2]].cuda())
                         if opt.running_stat:
@@ -543,9 +548,12 @@ def main():
                             qnn.set_running_stat(False, opt.rs_sm_only)
                         gc.collect()
                     act_bs = opt.cali_batch_size // 2 if not opt.quant_act_ops else opt.cali_batch_size // 4
+                    accum_batches =  16 if opt.accum_batches else 1
                     kwargs = dict(
-                        cali_data=cali_data, batch_size=opt.cali_batch_size//2, iters=opt.cali_iters_a, act_quant=True, 
-                        opt_mode='mse', lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond)
+                                    cali_data=cali_data, batch_size=opt.cali_batch_size//2, 
+                                    iters=opt.cali_iters_a, act_quant=True,opt_mode='mse', 
+                                    lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond,
+                                    accum_batches= accum_batches)
                     recon_model(qnn)
                     qnn.set_quant_state(weight_quant=True, act_quant=True)
                 

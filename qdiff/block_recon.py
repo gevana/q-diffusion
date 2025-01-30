@@ -14,7 +14,8 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
                          batch_size: int = 32, iters: int = 20000, weight: float = 0.01, opt_mode: str = 'mse',
                          asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
                          warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0,
-                         multi_gpu: bool = False, cond: bool = False, is_sm: bool = False):
+                         multi_gpu: bool = False, cond: bool = False, is_sm: bool = False,
+                         accum_batches=1):
     """
     Block reconstruction to optimize the output from each block.
 
@@ -35,6 +36,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     :param multi_gpu: use multi-GPU or not, if enabled, we should sync the gradients
     :param cond: conditional generation or not
     :param is_sm: avoid OOM when caching n^2 attention matrix when n is large
+    :accum_batches : num of batches to accumulate before backprop 
     """
     model.set_quant_state(False, False)
     block.set_quant_state(True, act_quant)
@@ -42,6 +44,8 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     
     prefix = f"{block.full_name}_weight_opt" if not act_quant else f"{block.full_name}_act_opt"
     delta_dict={}
+
+    iters = iters // accum_batches
 
     if not include_act_func:
         org_act_func = block.activation_function
@@ -130,25 +134,33 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     device = 'cuda'
     
     for i in range(iters):
-        if isinstance(cached_inps, list):
-            idx = torch.randperm(cached_inps[0].size(0))[:batch_size]
-            cur_x = cached_inps[0][idx].to(device)
-            cur_t = cached_inps[1][idx].to(device)
-            cur_inp = (cur_x, cur_t)
-        else:
-            idx = torch.randperm(cached_inps.size(0))[:batch_size]
-            cur_inp = cached_inps[idx].to(device)
-        cur_out = cached_outs[idx].to(device)
-        cur_grad = cached_grads[idx].to(device) if opt_mode != 'mse' else None
-
         optimizer.zero_grad()
-        if isinstance(cur_inp, tuple):
-            out_quant = block(cur_inp[0], cur_inp[1])
-        else:
-            out_quant = block(cur_inp)
+        for _ in range(accum_batches):
+            if isinstance(cached_inps, list):
+                idx = torch.randperm(cached_inps[0].size(0))[:batch_size]
+                cur_x = cached_inps[0][idx].to(device)
+                cur_t = cached_inps[1][idx].to(device)
+                cur_inp = (cur_x, cur_t)
+            else:
+                idx = torch.randperm(cached_inps.size(0))[:batch_size]
+                cur_inp = cached_inps[idx].to(device)
+            cur_out = cached_outs[idx].to(device)
+            cur_grad = cached_grads[idx].to(device) if opt_mode != 'mse' else None
 
-        err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+            
+            if isinstance(cur_inp, tuple):
+                out_quant = block(cur_inp[0], cur_inp[1])
+            else:
+                out_quant = block(cur_inp)
 
+            err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+            err.backward(retain_graph=True)
+            if multi_gpu:
+                raise NotImplementedError
+            #     for p in opt_params:
+            #         link.allreduce(p.grad)
+        
+        
         if act_quant:
             for name, module in block.named_modules():
                 if isinstance(module, QuantModule):
@@ -165,11 +177,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
                                 **delta_dict,
                                 })
 
-        err.backward(retain_graph=True)
-        if multi_gpu:
-            raise NotImplementedError
-        #     for p in opt_params:
-        #         link.allreduce(p.grad)
+        
         optimizer.step()
         if scheduler:
             scheduler.step()

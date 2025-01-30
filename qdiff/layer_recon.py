@@ -14,7 +14,8 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
                          batch_size: int = 32, iters: int = 20000, weight: float = 0.001, opt_mode: str = 'mse',
                          asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
                          warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0,
-                         multi_gpu: bool = False, cond: bool = False, is_sm: bool = False):
+                         multi_gpu: bool = False, cond: bool = False, is_sm: bool = False,
+                         accum_batches=1):
     """
     Block reconstruction to optimize the output from each layer.
 
@@ -35,6 +36,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     :param multi_gpu: use multi-GPU or not, if enabled, we should sync the gradients
     :param cond: conditional generation or not
     :param is_sm: avoid OOM when caching n^2 attention matrix when n is large
+    :accum_batches : num of batches to accumulate before backprop 
     """
 
     model.set_quant_state(False, False)
@@ -42,6 +44,8 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     round_mode = 'learned_hard_sigmoid'
     prefix = f"{layer.full_name}_weight_opt" if not act_quant else f"{layer.full_name}_act_opt"
     delta_dict={}
+
+    iters = iters // accum_batches
 
     if not include_act_func:
         org_act_func = layer.activation_function
@@ -96,15 +100,22 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         cached_grads = None
     device = 'cuda'
     for i in range(iters):
-        idx = torch.randperm(cached_inps.size(0))[:batch_size]
-        cur_inp = cached_inps[idx].to(device)
-        cur_out = cached_outs[idx].to(device)
-        cur_grad = cached_grads[idx] if opt_mode != 'mse' else None
-
         optimizer.zero_grad()
-        out_quant = layer(cur_inp)
+        for _ in range(accum_batches):
+            idx = torch.randperm(cached_inps.size(0))[:batch_size]
+            cur_inp = cached_inps[idx].to(device)
+            cur_out = cached_outs[idx].to(device)
+            cur_grad = cached_grads[idx] if opt_mode != 'mse' else None
 
-        err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+            optimizer.zero_grad()
+            out_quant = layer(cur_inp)
+
+            err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+            err.backward(retain_graph=True)
+            if multi_gpu:
+                raise NotImplementedError
+                # for p in opt_params:
+                #     link.allreduce(p.grad)
 
         if act_quant: 
             delta_dict[f'{prefix}/delta'] = layer.act_quantizer.delta.detach().cpu().numpy()
@@ -118,11 +129,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
                         **delta_dict,
                         })
 
-        err.backward(retain_graph=True)
-        if multi_gpu:
-            raise NotImplementedError
-            # for p in opt_params:
-            #     link.allreduce(p.grad)
+        
         optimizer.step()
         if scheduler:
             scheduler.step()
