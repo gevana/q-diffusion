@@ -246,6 +246,12 @@ def main():
         "--quant_act", action="store_true", 
         help="if to quantize activations when ptq==True"
     )
+
+    parser.add_argument(
+        "--quant_act_ops", action="store_true", 
+        help="if to quantize  ops activations when ptq==True"
+    )
+
     parser.add_argument(
         "--weight_bit",
         type=int,
@@ -376,6 +382,7 @@ def main():
                 "weight_bit": opt.weight_bit,
                 "symmetric_weight": opt.symmetric_weight,
                 "act_quant": opt.quant_act,
+                "act_quant_ops": opt.quant_act_ops,
                 "act_bit": opt.act_bit,
                 "sm_abit": opt.sm_abit,
                 "resume_w": opt.resume_w,
@@ -411,7 +418,7 @@ def main():
             wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
                          'symmetric':opt.symmetric_weight,'debug':opt.debug}
             aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
-                         'leaf_param':  opt.quant_act, 'debug':opt.debug}
+                         'leaf_param':  opt.quant_act, 'debug':opt.debug,}
             if opt.resume:
                 logger.info('Load with min-max quick initialization')
                 wq_params['scale_method'] = 'max'
@@ -420,7 +427,7 @@ def main():
                 wq_params['scale_method'] = 'max'
             qnn = QuantModel(
                 model=sampler.model.model.diffusion_model, weight_quant_params=wq_params, act_quant_params=aq_params,
-                act_quant_mode="qdiff", sm_abit=opt.sm_abit)
+                act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops)
             qnn.cuda()
             qnn.eval()
             # logging.info(qnn)
@@ -535,6 +542,7 @@ def main():
                                     cali_cs[inds[i * act_bs:(i + 1) * act_bs]].cuda())
                             qnn.set_running_stat(False, opt.rs_sm_only)
                         gc.collect()
+                    act_bs = opt.cali_batch_size // 2 if not opt.quant_act_ops else opt.cali_batch_size // 4
                     kwargs = dict(
                         cali_data=cali_data, batch_size=opt.cali_batch_size//2, iters=opt.cali_iters_a, act_quant=True, 
                         opt_mode='mse', lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond)

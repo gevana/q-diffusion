@@ -1,7 +1,7 @@
 import torch
 # import linklink as link
 import logging
-from qdiff.quant_layer import QuantModule, StraightThrough, lp_loss
+from qdiff.quant_layer import QuantModule,QuantOp, StraightThrough, lp_loss
 from qdiff.quant_model import QuantModel
 from qdiff.quant_block import BaseQuantBlock
 from qdiff.adaptive_rounding import AdaRoundQuantizer
@@ -50,7 +50,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     if not act_quant:
         # Replace weight quantizer to AdaRoundQuantizer
         for name, module in block.named_modules():
-            if isinstance(module, QuantModule):
+            if isinstance(module, QuantModule) and not isinstance(module, QuantOp):
                 if module.split != 0:
                         module.weight_quantizer = AdaRoundQuantizer(uaq=module.weight_quantizer, round_mode=round_mode,
                                                                 weight_tensor=module.org_weight.data[:, :module.split, ...])
@@ -66,7 +66,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
         # Set up optimizer
         opt_params = []
         for name, module in block.named_modules():
-            if isinstance(module, QuantModule):
+            if isinstance(module, QuantModule) and not isinstance(module, QuantOp):
                 opt_params += [module.weight_quantizer.alpha]
                 if module.split != 0:
                     opt_params += [module.weight_quantizer_0.alpha]
@@ -102,7 +102,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
 
         
         for name, module in block.named_modules():
-            if isinstance(module, QuantModule):
+            if isinstance(module, (QuantModule , QuantOp)):
                 if module.act_quantizer.delta is not None:
                     opt_params += [module.act_quantizer.delta]
                 if module.split != 0 and module.act_quantizer_0.delta is not None:
@@ -128,6 +128,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     else:
         cached_grads = None
     device = 'cuda'
+    
     for i in range(iters):
         if isinstance(cached_inps, list):
             idx = torch.randperm(cached_inps[0].size(0))[:batch_size]
@@ -177,7 +178,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
 
     # Finish optimization, use hard rounding.
     for name, module in block.named_modules():
-        if isinstance(module, QuantModule):
+        if isinstance(module, QuantModule) and not isinstance(module, QuantOp):
             module.weight_quantizer.soft_targets = False
             if module.split != 0:
                 module.weight_quantizer_0.soft_targets = False
@@ -240,7 +241,7 @@ class LossFunction:
         elif self.round_loss == 'relaxation':
             round_loss = 0
             for name, module in self.block.named_modules():
-                if isinstance(module, QuantModule):
+                if isinstance(module, QuantModule) and not isinstance(module, QuantOp):
                     round_vals = module.weight_quantizer.get_soft_targets()
                     round_loss += self.weight * (1 - ((round_vals - .5).abs() * 2).pow(b)).sum()
         else:

@@ -221,7 +221,8 @@ class QuantModule(nn.Module):
     """
     def __init__(self, org_module: Union[nn.Conv2d, nn.Linear, nn.Conv1d], weight_quant_params: dict = {},
                  act_quant_params: dict = {}, disable_act_quant: bool = False, act_quant_mode: str = 'qdiff'):
-        super(QuantModule, self).__init__()
+        #super(QuantModule, self).__init__()
+        super().__init__()
         self.weight_quant_params = weight_quant_params
         self.act_quant_params = act_quant_params
         if isinstance(org_module, nn.Conv2d):
@@ -287,7 +288,11 @@ class QuantModule(nn.Module):
         else:
             weight = self.org_weight
             bias = self.org_bias
-        out = self.fwd_func(input, weight, bias, **self.fwd_kwargs)
+        
+        if weight is None:
+            out = self.fwd_func(input)
+        else:
+            out = self.fwd_func(input, weight, bias, **self.fwd_kwargs)
         out = self.activation_function(out)
 
         return out
@@ -306,3 +311,39 @@ class QuantModule(nn.Module):
             self.act_quantizer.running_stat = running_stat
             if self.split != 0:
                 self.act_quantizer_0.running_stat = running_stat
+
+
+class QuantOp(QuantModule):
+    """
+    """
+    def __init__(self, org_module: Union[nn.SiLU, nn.GroupNorm],act_quant_params: dict = {},
+                  disable_act_quant: bool = False, act_quant_mode: str = 'qdiff'):
+        torch.nn.Module.__init__(self)
+        self.act_quant_params = act_quant_params
+        self.fwd_kwargs = None
+        self.fwd_func = org_module
+        self.bias = None
+        self.org_bias = None
+        # de-activate the quantized forward default
+        self._use_weight_quant = False
+        self.use_act_quant = False
+        self.org_weight = None
+        self.weight = None
+        self.act_quant_mode = act_quant_mode
+        self.disable_act_quant = disable_act_quant
+        # initialize quantizer
+        self.weight_quantizer = None
+        if self.act_quant_mode == 'qdiff':
+            self.act_quantizer = UniformAffineQuantizer(**self.act_quant_params)
+        self.split = 0
+
+        self.activation_function = StraightThrough()
+        self.ignore_reconstruction = False
+
+    @property
+    def use_weight_quant(self):
+        return False#self._use_weight_quant
+    
+    @use_weight_quant.setter
+    def use_weight_quant(self, value):
+        self._use_weight_quant = False

@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from qdiff.quant_layer import QuantModule, UniformAffineQuantizer
 from qdiff.quant_block import BaseQuantBlock
-from qdiff.quant_model import QuantModel
+from qdiff.quant_model import QuantModel,QuantOp
 from qdiff.adaptive_rounding import AdaRoundQuantizer
 from qdiff.quant_layer import UniformAffineQuantizer
 
@@ -350,7 +350,7 @@ def get_train_samples(args, sample_data, custom_steps=None):
 
 def convert_adaround(model):
     for name, module in model.named_children():
-        if isinstance(module, QuantModule):
+        if isinstance(module, QuantModule) and not isinstance(module, QuantOp):
             if module.ignore_reconstruction is True:
                 # logger.info('Ignore reconstruction of layer {}'.format(name))
                 continue
@@ -365,7 +365,7 @@ def convert_adaround(model):
             else:
                 # logger.info('Change block {} to adaround'.format(name))
                 for name, sub_module in module.named_modules():
-                    if isinstance(sub_module, QuantModule):
+                    if isinstance(sub_module, QuantModule) and not isinstance(sub_module, QuantOp):
                         if sub_module.split != 0:
                             # print(f"split {name}")
                             sub_module.weight_quantizer = AdaRoundQuantizer(uaq=sub_module.weight_quantizer, round_mode='learned_hard_sigmoid',

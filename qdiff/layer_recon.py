@@ -1,7 +1,7 @@
 import torch
 # import linklink as link
 import logging
-from qdiff.quant_layer import QuantModule, StraightThrough, lp_loss
+from qdiff.quant_layer import QuantModule, QuantOp,StraightThrough, lp_loss
 from qdiff.quant_model import QuantModel
 from qdiff.block_recon import LinearTempDecay
 from qdiff.adaptive_rounding import AdaRoundQuantizer
@@ -46,6 +46,11 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     if not include_act_func:
         org_act_func = layer.activation_function
         layer.activation_function = StraightThrough()
+
+    if isinstance(layer, QuantOp) and not act_quant:
+        logger.info(f'no weights optimization for {layer.full_name}')
+        return
+        
 
     if not act_quant:
         # Replace weight quantizer to AdaRoundQuantizer
@@ -124,10 +129,11 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
 
     torch.cuda.empty_cache()
 
+    if not isinstance(layer, QuantOp):
     # Finish optimization, use hard rounding.
-    layer.weight_quantizer.soft_targets = False
-    if layer.split != 0:
-        layer.weight_quantizer_0.soft_targets = False
+        layer.weight_quantizer.soft_targets = False
+        if layer.split != 0:
+            layer.weight_quantizer_0.soft_targets = False
 
     # Reset original activation function
     if not include_act_func:
