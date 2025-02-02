@@ -3,8 +3,9 @@ import torch.nn as nn
 from qdiff.quant_block import get_specials, BaseQuantBlock
 from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock
 from qdiff.quant_block import QuantQKMatMul, QuantSMVMatMul, QuantBasicTransformerBlock, QuantAttnBlock
-from qdiff.quant_layer import QuantModule, StraightThrough
+from qdiff.quant_layer import QuantModule, StraightThrough, QuantOp
 from ldm.modules.attention import BasicTransformerBlock
+from ldm.modules.diffusionmodules.util import GroupNorm32
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ class QuantModel(nn.Module):
         super().__init__()
         self.model = model
         self.sm_abit = kwargs.get('sm_abit', 8)
+        self.quant_act_ops = kwargs.get('quant_act_ops', False)
         self.in_channels = model.in_channels
         if hasattr(model, 'image_size'):
             self.image_size = model.image_size
@@ -35,6 +37,9 @@ class QuantModel(nn.Module):
                 setattr(module, name, QuantModule(
                     child_module, weight_quant_params, act_quant_params))
                 prev_quantmodule = getattr(module, name)
+            elif self.quant_act_ops and isinstance(child_module,(nn.SiLU,GroupNorm32)):
+                setattr(module, name, QuantOp(
+                    child_module, act_quant_params))
 
             elif isinstance(child_module, StraightThrough):
                 continue

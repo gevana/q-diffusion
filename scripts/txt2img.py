@@ -246,6 +246,17 @@ def main():
         "--quant_act", action="store_true", 
         help="if to quantize activations when ptq==True"
     )
+
+    parser.add_argument(
+        "--quant_act_ops", action="store_true", 
+        help="if to quantize  ops activations when ptq==True"
+    )
+
+    parser.add_argument(
+        "--accum_batches", action="store_true", 
+        help="accumulate gradients for activation quantization"
+    )
+
     parser.add_argument(
         "--weight_bit",
         type=int,
@@ -368,22 +379,29 @@ def main():
     logger = logging.getLogger(__name__)
 
     logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
+    p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
+    if opt.debug:
+        p_name =  p_name + "-debug"
+    
     run = wandb.init(
             # Set the project where this run will be logged
-            project="q-diff",
+            project = p_name,
             # Track hyperparameters and run metadata
             config={
                 "weight_bit": opt.weight_bit,
                 "symmetric_weight": opt.symmetric_weight,
                 "act_quant": opt.quant_act,
+                "act_quant_ops": opt.quant_act_ops,
+                "accum_batches": opt.accum_batches,
                 "act_bit": opt.act_bit,
                 "sm_abit": opt.sm_abit,
                 "resume_w": opt.resume_w,
                 "resume": opt.resume,
+                "cali_iters_a": opt.cali_iters_a,
+                "cali_iters": opt.cali_iters,
                 "cali_ckpt": opt.cali_ckpt,
                 "prompt": opt.prompt,
-                "debug": opt.debug,
-                
+                "debug": opt.debug,   
             },
     )
 
@@ -412,7 +430,7 @@ def main():
             wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
                          'symmetric':opt.symmetric_weight,'debug':opt.debug}
             aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
-                         'leaf_param':  opt.quant_act, 'debug':opt.debug}
+                         'leaf_param':  opt.quant_act, 'debug':opt.debug,}
             if opt.resume:
                 logger.info('Load with min-max quick initialization')
                 wq_params['scale_method'] = 'max'
@@ -421,7 +439,7 @@ def main():
                 wq_params['scale_method'] = 'max'
             qnn = QuantModel(
                 model=sampler.model.model.diffusion_model, weight_quant_params=wq_params, act_quant_params=aq_params,
-                act_quant_mode="qdiff", sm_abit=opt.sm_abit)
+                act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops)
             qnn.cuda()
             qnn.eval()
             # logging.info(qnn)
@@ -442,8 +460,8 @@ def main():
                 if opt.debug:
                     print(f"Calibration data shape debug reduction:")
                     cali_data = [x[:opt.cali_batch_size*2] for x in cali_data]
-                    opt.cali_iters = 20
-                    opt.cali_iters_a = 50
+                    opt.cali_iters = 20 if not opt.accum_batches else 24
+                    opt.cali_iters_a = 20 if not opt.accum_batches else 32
 
 
                 gc.collect()
@@ -464,9 +482,9 @@ def main():
                 # Kwargs for weight rounding calibration
                 kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
                             iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
-                            warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond)
-                
-
+                            warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
+                            #accum_batches= 4 if opt.accum_batches else 1)
+                            accum_batches = 1)
 
                 def recon_model(model):
                     """
@@ -510,8 +528,9 @@ def main():
                     torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
-                grid_wq_only = gen_image_from_prompt(qnn,sampler=sampler,prompt=opt.prompt,)
-                wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
+                if False:
+                    grid_wq_only = gen_image_from_prompt(model,sampler=sampler,prompt=opt.prompt,)
+                    wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
 
 
                 if opt.quant_act:
@@ -521,7 +540,7 @@ def main():
                     # Initialize activation quantization parameters
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():
-                        act_bs = 8 
+                        act_bs = 8//2
                         inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
                         _ = qnn(cali_xs[inds[:act_bs//2]].cuda(), cali_ts[inds[:act_bs//2]].cuda(), cali_cs[inds[:act_bs//2]].cuda())
                         if opt.running_stat:
@@ -535,9 +554,13 @@ def main():
                                     cali_cs[inds[i * act_bs:(i + 1) * act_bs]].cuda())
                             qnn.set_running_stat(False, opt.rs_sm_only)
                         gc.collect()
+                    act_bs = opt.cali_batch_size // 2 if not opt.quant_act_ops else opt.cali_batch_size // 4
+                    accum_batches =  opt.cali_batch_size // act_bs # 2 if opt.accum_batches else 1
                     kwargs = dict(
-                        cali_data=cali_data, batch_size=opt.cali_batch_size//2, iters=opt.cali_iters_a, act_quant=True, 
-                        opt_mode='mse', lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond)
+                                    cali_data=cali_data, batch_size=opt.cali_batch_size//2, 
+                                    iters=opt.cali_iters_a, act_quant=True,opt_mode='mse', 
+                                    lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond,
+                                    accum_batches= accum_batches)
                     recon_model(qnn)
                     qnn.set_quant_state(weight_quant=True, act_quant=True)
                 

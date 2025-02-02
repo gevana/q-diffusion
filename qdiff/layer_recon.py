@@ -1,7 +1,7 @@
 import torch
 # import linklink as link
 import logging
-from qdiff.quant_layer import QuantModule, StraightThrough, lp_loss
+from qdiff.quant_layer import QuantModule, QuantOp,StraightThrough, lp_loss
 from qdiff.quant_model import QuantModel
 from qdiff.block_recon import LinearTempDecay
 from qdiff.adaptive_rounding import AdaRoundQuantizer
@@ -14,7 +14,8 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
                          batch_size: int = 32, iters: int = 20000, weight: float = 0.001, opt_mode: str = 'mse',
                          asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
                          warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0,
-                         multi_gpu: bool = False, cond: bool = False, is_sm: bool = False):
+                         multi_gpu: bool = False, cond: bool = False, is_sm: bool = False,
+                         accum_batches=1):
     """
     Block reconstruction to optimize the output from each layer.
 
@@ -35,15 +36,25 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     :param multi_gpu: use multi-GPU or not, if enabled, we should sync the gradients
     :param cond: conditional generation or not
     :param is_sm: avoid OOM when caching n^2 attention matrix when n is large
+    :accum_batches : num of batches to accumulate before backprop 
     """
 
     model.set_quant_state(False, False)
     layer.set_quant_state(True, act_quant)
     round_mode = 'learned_hard_sigmoid'
+    prefix = f"{layer.full_name}_weight_opt" if not act_quant else f"{layer.full_name}_act_opt"
+    delta_dict={}
+
+    iters = iters // accum_batches
 
     if not include_act_func:
         org_act_func = layer.activation_function
         layer.activation_function = StraightThrough()
+
+    if isinstance(layer, QuantOp) and not act_quant:
+        logger.info(f'no weights optimization for {layer.full_name}')
+        return
+        
 
     if not act_quant:
         # Replace weight quantizer to AdaRoundQuantizer
@@ -76,7 +87,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
 
     loss_func = LossFunction(layer, round_loss=loss_mode, weight=weight,
                              max_count=iters, rec_loss=rec_loss, b_range=b_range,
-                             decay_start=0, warmup=warmup, p=p)
+                             decay_start=0, warmup=warmup, p=p,act_quant=act_quant)
 
     # Save data before optimizing the rounding
     # cached_inps, cached_outs = save_inp_oup_data(
@@ -89,30 +100,47 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         cached_grads = None
     device = 'cuda'
     for i in range(iters):
-        idx = torch.randperm(cached_inps.size(0))[:batch_size]
-        cur_inp = cached_inps[idx].to(device)
-        cur_out = cached_outs[idx].to(device)
-        cur_grad = cached_grads[idx] if opt_mode != 'mse' else None
-
         optimizer.zero_grad()
-        out_quant = layer(cur_inp)
+        for _ in range(accum_batches):
+            idx = torch.randperm(cached_inps.size(0))[:batch_size]
+            cur_inp = cached_inps[idx].to(device)
+            cur_out = cached_outs[idx].to(device)
+            cur_grad = cached_grads[idx] if opt_mode != 'mse' else None
 
-        err = loss_func(out_quant, cur_out, cur_grad)
-        err.backward(retain_graph=True)
-        if multi_gpu:
-            raise NotImplementedError
-            # for p in opt_params:
-            #     link.allreduce(p.grad)
+            optimizer.zero_grad()
+            out_quant = layer(cur_inp)
+
+            err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
+            err.backward(retain_graph=True)
+            if multi_gpu:
+                raise NotImplementedError
+                # for p in opt_params:
+                #     link.allreduce(p.grad)
+
+        if act_quant: 
+            delta_dict[f'{prefix}/delta'] = layer.act_quantizer.delta.detach().cpu().numpy()
+            if layer.split != 0 and layer.act_quantizer_0.delta is not None:
+                delta_dict[f'{prefix}/delta_0'] = layer.act_quantizer_0.delta.detach().cpu().numpy()
+
+
+        wandb.log(data={f"{prefix}/loss": err,f"{prefix}/lr": optimizer.param_groups[0]['lr'],
+                        f"{prefix}/rec_loss": rec_loss, f"{prefix}/round_loss": round_loss,
+                        f"{prefix}/iter": i, f"{prefix}/b": loss_func.temp_decay(i),
+                        **delta_dict,
+                        })
+
+        
         optimizer.step()
         if scheduler:
             scheduler.step()
 
     torch.cuda.empty_cache()
 
+    if not isinstance(layer, QuantOp):
     # Finish optimization, use hard rounding.
-    layer.weight_quantizer.soft_targets = False
-    if layer.split != 0:
-        layer.weight_quantizer_0.soft_targets = False
+        layer.weight_quantizer.soft_targets = False
+        if layer.split != 0:
+            layer.weight_quantizer_0.soft_targets = False
 
     # Reset original activation function
     if not include_act_func:
@@ -129,7 +157,8 @@ class LossFunction:
                  b_range: tuple = (10, 2),
                  decay_start: float = 0.0,
                  warmup: float = 0.0,
-                 p: float = 2.):
+                 p: float = 2.,
+                 act_quant = False):
 
         self.layer = layer
         self.round_loss = round_loss
@@ -141,6 +170,7 @@ class LossFunction:
         self.temp_decay = LinearTempDecay(max_count, rel_start_decay=warmup + (1 - warmup) * decay_start,
                                           start_b=b_range[0], end_b=b_range[1])
         self.count = 0
+        self.act_quant =act_quant
 
     def __call__(self, pred, tgt, grad=None):
         """
@@ -180,10 +210,15 @@ class LossFunction:
         if self.count % 500 == 0:
             logger.info('Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f})\tb={:.2f}\tcount={}'.format(
                   float(total_loss), float(rec_loss), float(round_loss), b, self.count))
-        if self.count % 50 ==0: 
-            wandb.log(step=self.count, 
-                      data={f'{self.layer.full_name}/Total loss': total_loss, f'{self.layer.full_name}/Rec loss': rec_loss,
-                             f'{self.layer.full_name}/Round loss': round_loss})
+        
+        # if self.count % 5 ==0:
+        #     if self.act_quant:
+        #         prefix = f"{self.layer.full_name}_act_opt"
+        #     else:
+        #         prefix = f"{self.layer.full_name}_weight_opt"
+        #     wandb.log(step=self.count, 
+        #               data={f'{prefix}/Total loss': total_loss, f'{prefix}/Rec loss': rec_loss,
+        #                      f'{prefix}/Round loss': round_loss})
 
-        return total_loss
+        return total_loss , rec_loss, round_loss
 
