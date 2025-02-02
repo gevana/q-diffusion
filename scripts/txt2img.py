@@ -393,6 +393,8 @@ def main():
                 "sm_abit": opt.sm_abit,
                 "resume_w": opt.resume_w,
                 "resume": opt.resume,
+                "cali_iters_a": opt.cali_iters_a,
+                "cali_iters": opt.cali_iters,
                 "cali_ckpt": opt.cali_ckpt,
                 "prompt": opt.prompt,
                 "debug": opt.debug,   
@@ -477,7 +479,8 @@ def main():
                 kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
                             iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                             warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
-                            accum_batches= 4 if opt.accum_batches else 1)
+                            #accum_batches= 4 if opt.accum_batches else 1)
+                            accum_batches = 1)
 
                 def recon_model(model):
                     """
@@ -548,7 +551,7 @@ def main():
                             qnn.set_running_stat(False, opt.rs_sm_only)
                         gc.collect()
                     act_bs = opt.cali_batch_size // 2 if not opt.quant_act_ops else opt.cali_batch_size // 4
-                    accum_batches =  16 if opt.accum_batches else 1
+                    accum_batches =  opt.cali_batch_size // act_bs # 2 if opt.accum_batches else 1
                     kwargs = dict(
                                     cali_data=cali_data, batch_size=opt.cali_batch_size//2, 
                                     iters=opt.cali_iters_a, act_quant=True,opt_mode='mse', 
