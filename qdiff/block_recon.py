@@ -163,7 +163,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
         
         if act_quant:
             for name, module in block.named_modules():
-                if isinstance(module, QuantModule):
+                if isinstance(module, (QuantModule , QuantOp)):
                     if module.act_quantizer.delta is not None:
                         delta_dict[f'{prefix}/{name}_delta']=module.act_quantizer.delta.detach().cpu().numpy()
                     if module.split != 0 and module.act_quantizer_0.delta is not None:
