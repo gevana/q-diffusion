@@ -379,7 +379,7 @@ def main():
     logger = logging.getLogger(__name__)
 
     logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
-    p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
+    p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops+norm"
     if opt.debug:
         p_name =  p_name + "-debug"
     

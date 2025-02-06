@@ -37,7 +37,7 @@ class QuantModel(nn.Module):
                 setattr(module, name, QuantModule(
                     child_module, weight_quant_params, act_quant_params))
                 prev_quantmodule = getattr(module, name)
-            elif self.quant_act_ops and isinstance(child_module,(nn.SiLU,GroupNorm32)):
+            elif self.quant_act_ops and isinstance(child_module,(nn.SiLU,GroupNorm32,nn.LayerNorm)):
                 setattr(module, name, QuantOp(
                     child_module, act_quant_params))
 

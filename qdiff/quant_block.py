@@ -5,7 +5,7 @@ from torch import einsum
 import torch.nn as nn
 from einops import rearrange, repeat
 
-from qdiff.quant_layer import QuantModule, UniformAffineQuantizer, StraightThrough
+from qdiff.quant_layer import QuantModule,QuantOp, UniformAffineQuantizer, StraightThrough
 from ldm.modules.diffusionmodules.openaimodel import AttentionBlock, ResBlock, TimestepBlock, checkpoint
 from ldm.modules.diffusionmodules.openaimodel import QKMatMul, SMVMatMul
 from ldm.modules.attention import BasicTransformerBlock
@@ -278,7 +278,7 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.use_weight_quant = weight_quant
         self.use_act_quant = act_quant
         for m in self.modules():
-            if isinstance(m, QuantModule):
+            if isinstance(m, (QuantModule ,QuantOp)):
                 m.set_quant_state(weight_quant, act_quant)
 
 
