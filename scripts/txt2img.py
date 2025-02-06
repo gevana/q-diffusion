@@ -380,6 +380,8 @@ def main():
 
     logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
     p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
+    if opt.ddim_steps != 50:
+        p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
     if opt.debug:
         p_name =  p_name + "-debug"
     
@@ -395,6 +397,7 @@ def main():
                 "accum_batches": opt.accum_batches,
                 "act_bit": opt.act_bit,
                 "sm_abit": opt.sm_abit,
+                "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
                 "resume": opt.resume,
                 "cali_iters_a": opt.cali_iters_a,
