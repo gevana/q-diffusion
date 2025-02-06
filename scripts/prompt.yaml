@@ -1,0 +1,66 @@
+- image: transion/face/1.png
+  prompt: photo of a young african man wearing a lapel pin networking with peers in
+    a private office
+  seed: 535
+- image: transion/face/1.png
+  prompt: photo of a young african man wearing a digital watch speaking with a colleague
+    in a spacious lobby
+  seed: 2368
+- image: transion/face/1.png
+  prompt: photo of a young african man wearing a smart tie negotiating a deal by a
+    large screen
+  seed: 9133
+- image: transion/face/1.png
+  prompt: photo of a young african man wearing a digital watch using a tablet in a
+    collaborative workspace
+  seed: 6402
+
+- image: transion/face/2.png
+  prompt: photo of a young Asian woman wearing a trench coat giving a presentation
+    by a window with a view
+  seed: 1503
+- image: transion/face/2.png
+  prompt: photo of a young Asian woman wearing a casual dress consulting a calendar
+    in a busy office
+  seed: 3644
+- image: transion/face/2.png
+  prompt: photo of a young Asian woman wearing a wristwatch analyzing data in a tech
+    hub
+  seed: 6537
+- image: transion/face/2.png
+  prompt: photo of a young Asian woman wearing a brooch organizing documents by a
+    glass wall
+  seed: 8036
+
+- image: transion/face/3.png
+  prompt: photo of a young Indian woman wearing a lehenga using a tablet by a projector
+  seed: 1928
+- image: transion/face/3.png
+  prompt: photo of a young Indian woman wearing a salwar kameez conducting research
+    near a window
+  seed: 8661
+- image: transion/face/3.png
+  prompt: photo of a young Indian woman wearing a bindi making a presentation near
+    a board
+  seed: 4123
+- image: transion/face/3.png
+  prompt: photo of a young Indian woman wearing a silk scarf sipping tea in a private
+    cabin
+  seed: 3085
+
+- image: transion/face/4.png
+  prompt: photo of a young Indian man wearing a handbag sharing feedback in a training
+    room
+  seed: 3815
+- image: transion/face/4.png
+  prompt: photo of a young Indian man wearing a nose ring participating in a call
+    by an art piece
+  seed: 7150
+- image: transion/face/4.png
+  prompt: photo of a young Indian man wearing a dupatta engaging in a conversation
+    near a board
+  seed: 4784
+- image: transion/face/4.png
+  prompt: photo of a young Indian man wearing a watch reviewing data at a conference
+    table
+  seed: 1858
