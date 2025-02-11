@@ -376,9 +376,8 @@ def main():
             logging.StreamHandler()
         ]
     )
-    logger = logging.getLogger(__name__)
 
-    logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
+    
     p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
     if opt.ddim_steps != 50:
         p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
@@ -403,11 +402,15 @@ def main():
                 "cali_iters_a": opt.cali_iters_a,
                 "cali_iters": opt.cali_iters,
                 "cali_ckpt": opt.cali_ckpt,
+                "cali_data_path": opt.cali_data_path,
                 "prompt": opt.prompt,
                 "debug": opt.debug,   
             },
     )
 
+    logger = logging.getLogger(__name__)
+    logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act},abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}, {opt.cali_data_path}")
+    
 
     if opt.resume_w:
         logger.info(f"Resume_w from {opt.resume_w} {opt.cali_ckpt}")
@@ -456,7 +459,7 @@ def main():
                 cali_data = (torch.randn(1, 4, 64, 64), torch.randint(0, 1000, (1,)), torch.randn(1, 77, 768))
                 resume_cali_model(qnn, opt.cali_ckpt, cali_data, opt.quant_act, "qdiff", cond=opt.cond)
             else:
-                logger.info(f"Sampling data from {opt.cali_st} timesteps for calibration")
+                logger.info(f"Sampling data from {opt.cali_data_path} at {opt.cali_st} timesteps for calibration")
                 sample_data = torch.load(opt.cali_data_path)
                 cali_data = get_train_samples(opt, sample_data, opt.ddim_steps)
                 del(sample_data)

@@ -81,7 +81,7 @@ class UniformAffineQuantizer(nn.Module):
         # start quantization
         # print(f"x shape {x.shape} delta shape {self.delta.shape} zero shape {self.zero_point.shape}")
         x_int = round_ste(x / self.delta) + self.zero_point
-        x_quant = torch.clamp(x_int, 0, self.n_levels - 1)
+        #x_quant = torch.clamp(x_int, 0, self.n_levels - 1)
         if self.sym:
             x_quant = torch.clamp(x_int, -self.n_levels - 1, self.n_levels)
         else:
