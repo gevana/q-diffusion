@@ -46,7 +46,7 @@ class UniformAffineQuantizer(nn.Module):
     :param scale_method: determines the quantization scale and zero point
     """
     def __init__(self, n_bits: int = 8, symmetric: bool = False, channel_wise: bool = False, scale_method: str = 'max',
-                 leaf_param: bool = False, always_zero: bool = False,debug = False):
+                 leaf_param: bool = False, always_zero: bool = False,debug = False, **kwargs):
         super(UniformAffineQuantizer, self).__init__()
         self.sym = symmetric
         # assert 2 <= n_bits <= 8, 'bitwidth not supported'
@@ -253,34 +253,40 @@ class QuantModule(nn.Module):
         self.weight_quantizer = UniformAffineQuantizer(**self.weight_quant_params)
         if self.act_quant_mode == 'qdiff':
             self.act_quantizer = UniformAffineQuantizer(**self.act_quant_params)
-        self.split = 0
+        self.split_act = 0
+        self.split_weight = 0
 
         self.activation_function = StraightThrough()
         self.ignore_reconstruction = False
 
         self.extra_repr = org_module.extra_repr
 
+    @property
+    def split(self):
+        return self.split_act or self.split_weight
+
     def forward(self, input: torch.Tensor, split: int = 0):
         if split != 0 and self.split != 0:
             assert(split == self.split)
         elif split != 0:
             logger.info(f"split at {split}!")
-            self.split = split
+            self.split_act = split
+            self.split_weight = split
             self.set_split()
 
         if not self.disable_act_quant and self.use_act_quant:
-            if self.split != 0:
+            if self.split_act != 0:
                 if self.act_quant_mode == 'qdiff':
-                    input_0 = self.act_quantizer(input[:, :self.split, :, :])
-                    input_1 = self.act_quantizer_0(input[:, self.split:, :, :])
+                    input_0 = self.act_quantizer(input[:, :self.split_act, :, :])
+                    input_1 = self.act_quantizer_0(input[:, self.split_act:, :, :])
                 input = torch.cat([input_0, input_1], dim=1)
             else:
                 if self.act_quant_mode == 'qdiff':
                     input = self.act_quantizer(input)
         if self.use_weight_quant:
-            if self.split != 0:
-                weight_0 = self.weight_quantizer(self.weight[:, :self.split, ...])
-                weight_1 = self.weight_quantizer_0(self.weight[:, self.split:, ...])
+            if self.split_weight != 0:
+                weight_0 = self.weight_quantizer(self.weight[:, :self.split_weight, ...])
+                weight_1 = self.weight_quantizer_0(self.weight[:, self.split_weight:, ...])
                 weight = torch.cat([weight_0, weight_1], dim=1)
             else:
                 weight = self.weight_quantizer(self.weight)
@@ -302,14 +308,20 @@ class QuantModule(nn.Module):
         self.use_act_quant = act_quant
 
     def set_split(self):
-        self.weight_quantizer_0 = UniformAffineQuantizer(**self.weight_quant_params)
+        if not isinstance(self,QuantOp):
+            self.weight_quantizer_0 = UniformAffineQuantizer(**self.weight_quant_params)
+        
         if self.act_quant_mode == 'qdiff':
-            self.act_quantizer_0 = UniformAffineQuantizer(**self.act_quant_params)
+            if self.act_quant_params['split_to_16bits']:
+                self.split_act = False
+                self.act_quantizer = UniformAffineQuantizer(**{**self.act_quant_params,'n_bits':16})
+            else:
+                self.act_quantizer_0 = UniformAffineQuantizer(**self.act_quant_params)
 
     def set_running_stat(self, running_stat: bool):
         if self.act_quant_mode == 'qdiff':
             self.act_quantizer.running_stat = running_stat
-            if self.split != 0:
+            if self.split_act != 0:
                 self.act_quantizer_0.running_stat = running_stat
 
 
@@ -335,7 +347,8 @@ class QuantOp(QuantModule):
         self.weight_quantizer = None
         if self.act_quant_mode == 'qdiff':
             self.act_quantizer = UniformAffineQuantizer(**self.act_quant_params)
-        self.split = 0
+        self.split_act = 0
+        self.split_weight = 0
 
         self.activation_function = StraightThrough()
         self.ignore_reconstruction = False
