@@ -94,7 +94,12 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
             x = self.x_upd(x)
             h = in_conv(h)
         else:
-            h = self.in_layers(x)
+            if split != 0 :
+                h = self.in_layers[0](x, split=split)
+                for layer in self.in_layers[1:]:
+                    h = layer(h)
+            else:
+                h = self.in_layers(x)
         emb_out = self.emb_layers(emb).type(h.dtype)
         while len(emb_out.shape) < len(h.shape):
             emb_out = emb_out[..., None]

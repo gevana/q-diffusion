@@ -33,7 +33,8 @@ def gen_image_from_prompt(model,sampler,prompt,
                           n_samples=5,n_rows=0,n_iter=2,
                           outpath=None,
                           scale=7.5,C=4,W=512,H=512,f=8,
-                          ddim_steps=50,ddim_eta=0.0,skip_grid=False,):
+                          ddim_steps=50,ddim_eta=0.0,skip_grid=False,
+                          use_autocast = True):
 
 
     batch_size = n_samples
@@ -56,7 +57,7 @@ def gen_image_from_prompt(model,sampler,prompt,
     #if opt.fixed_code:
     #    start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
-    precision_scope = autocast #if opt.precision=="autocast" else nullcontext
+    precision_scope = autocast if use_autocast else nullcontext
     with torch.no_grad():
         with precision_scope("cuda"):
             with model.ema_scope():

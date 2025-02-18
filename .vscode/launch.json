@@ -54,20 +54,27 @@
                 "console": "integratedTerminal",
                 "args": [
                         "--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",
-                        "--weight_bit", "8","--quant_mode", "qdiff","--act_bit", "8","--cali_st", "25",
-                        "--cali_batch_size", "8", "--cali_n", "128","--no_grad_ckpt", "--split", "--running_stat",
-                        "--sm_abit","16","--cali_data_path","/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
+                        "--weight_bit", "8","--quant_mode", "qdiff",
+                        "--cali_batch_size", "8", "--no_grad_ckpt", "--split", "--running_stat","--sm_abit","16",
+                        //"--ddim_steps", "50","--cali_n", "128","--cali_st", "25",
+                        "--ddim_steps", "20","--cali_n", "160","--cali_st", "20",
+                        "--cali_data_path",
+                        //"/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
+                        //"/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps50.pt",
+                        "/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps20.pt",
                         "--outdir", "output_quantization","--symmetric_weight","--quant_act",
-                        //"--quant_act_ops",
+                        "--quant_act_ops",
+                        "--split_to_16bits",
+                        //"--act_bit", "16",
                         //"--accum_batches",
                         //"--resume_w", 
-                        //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-01-30-12-02-45/wc_ckpt.pth",
+                        //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-02-11-11-54-51/wc_ckpt.pth",
                         //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/8bit_sym/wc_ckpt.pth",
                         //"--cali_ckpt", "/fastdata/users/nadavg/sd/qdiff/output_quantization/2025-01-22-16-40-17/wc_ckpt.pth", // wbit8 sym weight
                         "--debug"
                         ],
                 "env": {
-                    "CUDA_VISIBLE_DEVICES": "7"
+                    "CUDA_VISIBLE_DEVICES": "2"
                 }
             },
     ]

@@ -101,7 +101,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
                 block.act_quantizer_k.delta]
         if hasattr(block, 'act_quantizer_w'):
             opt_params += [block.act_quantizer_v.delta]
-            if block.act_quantizer_w.n_bits != 16:
+            if block.act_quantizer_w.n_bits != 16: # to do : add the same for act_quantizer ??
                 opt_params += [block.act_quantizer_w.delta]
 
         
@@ -109,7 +109,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
             if isinstance(module, (QuantModule , QuantOp)):
                 if module.act_quantizer.delta is not None:
                     opt_params += [module.act_quantizer.delta]
-                if module.split != 0 and module.act_quantizer_0.delta is not None:
+                if module.split_act != 0 and module.act_quantizer_0.delta is not None:
                     opt_params += [module.act_quantizer_0.delta]
                
         optimizer = torch.optim.Adam(opt_params, lr=lr)
@@ -163,10 +163,10 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
         
         if act_quant:
             for name, module in block.named_modules():
-                if isinstance(module, QuantModule):
+                if isinstance(module, (QuantModule , QuantOp)):
                     if module.act_quantizer.delta is not None:
                         delta_dict[f'{prefix}/{name}_delta']=module.act_quantizer.delta.detach().cpu().numpy()
-                    if module.split != 0 and module.act_quantizer_0.delta is not None:
+                    if module.split_act != 0 and module.act_quantizer_0.delta is not None:
                         delta_dict[f'{prefix}/{name}_delta_0']=module.act_quantizer_0.delta.detach().cpu().numpy()
 
 

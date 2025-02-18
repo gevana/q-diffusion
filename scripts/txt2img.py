@@ -253,6 +253,12 @@ def main():
     )
 
     parser.add_argument(
+        "--split_to_16bits", action="store_true", 
+        help="replace act split with 16bits acts"
+    )
+
+
+    parser.add_argument(
         "--accum_batches", action="store_true", 
         help="accumulate gradients for activation quantization"
     )
@@ -362,6 +368,8 @@ def main():
 
     seed_everything(opt.seed)
 
+    if opt.debug:
+        opt.outdir = opt.outdir + "-debug"
     os.makedirs(opt.outdir, exist_ok=True)
     outpath = os.path.join(opt.outdir, datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
     os.makedirs(outpath)
@@ -376,10 +384,13 @@ def main():
             logging.StreamHandler()
         ]
     )
-    logger = logging.getLogger(__name__)
 
-    logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act}, abit={opt.act_bit}, sm_abit={opt.sm_abit}, resume_w={opt.resume_w}")
-    p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
+    
+    #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
+    p_name = "q-diff-split_to_16bits"
+    
+    if opt.ddim_steps != 50:
+        p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
     if opt.debug:
         p_name =  p_name + "-debug"
     
@@ -392,19 +403,25 @@ def main():
                 "symmetric_weight": opt.symmetric_weight,
                 "act_quant": opt.quant_act,
                 "act_quant_ops": opt.quant_act_ops,
+                "split_to_16bits": opt.split_to_16bits,
                 "accum_batches": opt.accum_batches,
                 "act_bit": opt.act_bit,
                 "sm_abit": opt.sm_abit,
+                "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
                 "resume": opt.resume,
                 "cali_iters_a": opt.cali_iters_a,
                 "cali_iters": opt.cali_iters,
                 "cali_ckpt": opt.cali_ckpt,
+                "cali_data_path": opt.cali_data_path,
                 "prompt": opt.prompt,
                 "debug": opt.debug,   
             },
     )
 
+    logger = logging.getLogger(__name__)
+    logger.info(f"wbit={opt.weight_bit}, sym={opt.symmetric_weight}, act_q={opt.quant_act},abit={opt.act_bit}, sm_abit={opt.sm_abit},{opt.split_to_16bits=}, resume_w={opt.resume_w}, {opt.cali_data_path}")
+    
 
     if opt.resume_w:
         logger.info(f"Resume_w from {opt.resume_w} {opt.cali_ckpt}")
@@ -430,7 +447,7 @@ def main():
             wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
                          'symmetric':opt.symmetric_weight,'debug':opt.debug}
             aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
-                         'leaf_param':  opt.quant_act, 'debug':opt.debug,}
+                         'leaf_param':  opt.quant_act, 'debug':opt.debug,'split_to_16bits':opt.split_to_16bits}
             if opt.resume:
                 logger.info('Load with min-max quick initialization')
                 wq_params['scale_method'] = 'max'
@@ -453,7 +470,7 @@ def main():
                 cali_data = (torch.randn(1, 4, 64, 64), torch.randint(0, 1000, (1,)), torch.randn(1, 77, 768))
                 resume_cali_model(qnn, opt.cali_ckpt, cali_data, opt.quant_act, "qdiff", cond=opt.cond)
             else:
-                logger.info(f"Sampling data from {opt.cali_st} timesteps for calibration")
+                logger.info(f"Sampling data from {opt.cali_data_path} at {opt.cali_st} timesteps for calibration")
                 sample_data = torch.load(opt.cali_data_path)
                 cali_data = get_train_samples(opt, sample_data, opt.ddim_steps)
                 del(sample_data)
@@ -576,6 +593,8 @@ def main():
                             else:
                                 m.zero_point = nn.Parameter(m.zero_point)
                 torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
+                torch.save(aq_params, os.path.join(outpath, "aq_params.pth"))
+                torch.save(wq_params, os.path.join(outpath, "wq_params.pth"))
 
             sampler.model.model.diffusion_model = qnn
 
@@ -615,7 +634,7 @@ def main():
     if opt.fixed_code:
         start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
-    precision_scope = autocast if opt.precision=="autocast" else nullcontext
+    precision_scope = nullcontext # autocast if opt.precision=="autocast" else nullcontext
     with torch.no_grad():
         with precision_scope("cuda"):
             with model.ema_scope():
