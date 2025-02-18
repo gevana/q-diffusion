@@ -386,7 +386,9 @@ def main():
     )
 
     
-    p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
+    #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
+    p_name = "q-diff-split_to_16bits"
+    
     if opt.ddim_steps != 50:
         p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
     if opt.debug:
