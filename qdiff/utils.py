@@ -11,6 +11,7 @@ from qdiff.quant_block import BaseQuantBlock
 from qdiff.quant_model import QuantModel,QuantOp
 from qdiff.adaptive_rounding import AdaRoundQuantizer
 from qdiff.quant_layer import UniformAffineQuantizer
+from src.utils.torch_utils import add_full_name_to_module
 
 logger = logging.getLogger(__name__)
 
@@ -379,7 +380,7 @@ def convert_adaround(model):
             convert_adaround(module)
 
 
-def resume_cali_model(qnn, ckpt_path, cali_data, quant_act=False, act_quant_mode='qdiff', cond=False):
+def resume_cali_model(qnn, ckpt_path, cali_data, quant_act=False, act_quant_mode='qdiff', cond=False,naive_weights_quant=False):
     print("Loading quantized model checkpoint")
     ckpt = torch.load(ckpt_path, map_location='cpu')
     
@@ -392,12 +393,20 @@ def resume_cali_model(qnn, ckpt_path, cali_data, quant_act=False, act_quant_mode
         cali_xs, cali_ts, cali_cs = cali_data
         _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
     # change weight quantizer from uniform to adaround
-    convert_adaround(qnn)
+    if not naive_weights_quant:
+        convert_adaround(qnn)
     
     for m in qnn.model.modules():
         if isinstance(m, AdaRoundQuantizer):
             m.zero_point = nn.Parameter(m.zero_point)
             m.delta = nn.Parameter(m.delta)
+    if naive_weights_quant:
+        add_full_name_to_module(qnn)
+        for m in qnn.model.modules():
+            if isinstance(m, UniformAffineQuantizer) and 'weight' in m.full_name:
+                m.zero_point = nn.Parameter(m.zero_point)
+                m.delta = nn.Parameter(m.delta)
+
 
     # remove act_quantizer states for now
     keys = [key for key in ckpt.keys() if "act" in key]

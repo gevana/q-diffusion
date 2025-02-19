@@ -468,7 +468,7 @@ def main():
 
             if opt.resume:
                 cali_data = (torch.randn(1, 4, 64, 64), torch.randint(0, 1000, (1,)), torch.randn(1, 77, 768))
-                resume_cali_model(qnn, opt.cali_ckpt, cali_data, opt.quant_act, "qdiff", cond=opt.cond)
+                resume_cali_model(qnn, opt.cali_ckpt, cali_data, opt.quant_act, "qdiff", cond=opt.cond,naive_weights_quant=True)
             else:
                 logger.info(f"Sampling data from {opt.cali_data_path} at {opt.cali_st} timesteps for calibration")
                 sample_data = torch.load(opt.cali_data_path)
@@ -513,7 +513,7 @@ def main():
                             logger.info("Finished calibrating input and mid blocks, saving temporary checkpoint...")
                             in_recon_done = True
                             torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
-                        if name.isdigit() and int(name) >= 9:
+                        if False:#name.isdigit() and int(name) >= 9:
                             logger.info(f"Saving temporary checkpoint at {name}...")
                             torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
                             
@@ -538,10 +538,11 @@ def main():
                     logger.info("Doing weight calibration")
                     recon_model(qnn)
                     logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
-                    for m in qnn.model.modules():
-                        if isinstance(m, AdaRoundQuantizer):
-                            m.zero_point = nn.Parameter(m.zero_point)
-                            m.delta = nn.Parameter(m.delta)
+                add_full_name_to_module(qnn)
+                for m in qnn.model.modules():
+                    if isinstance(m, UniformAffineQuantizer) and 'weight' in m.full_name:
+                        m.zero_point = nn.Parameter(m.zero_point)
+                        m.delta = nn.Parameter(m.delta)
                     torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                 qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
