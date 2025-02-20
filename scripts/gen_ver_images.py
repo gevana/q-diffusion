@@ -21,14 +21,16 @@ import matplotlib.pyplot as plt
 #from mo_utils.utils.plot_aux import plot_hist, myim
 from src.utils.torch_utils import add_full_name_to_module
 from PIL import Image
+import argparse
 
 
 
 
-
-def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,split_to_16bits,naive_quant_weights,
-               output_dir='./output',
-               quant_act=True,weight_quant=True):
+def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,
+                   split_to_16bits,naive_quant_weights,
+                    output_dir='./output',
+                    quant_act=True,weight_quant=True,
+                    num_images=12):
 
     
     config = OmegaConf.load(f'{Path.home()}/q-diffusion/configs/stable-diffusion/v1-inference.yaml')
@@ -57,22 +59,54 @@ def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,sp
         resume_cali_model(qnn, cali_ckpt, cali_data, quant_act, "qdiff", cond=True,naive_weights_quant=naive_quant_weights)
     qnn.set_quant_state(weight_quant=weight_quant, act_quant=quant_act)
 
+    
+    if output_dir is not None:
+        os.makedirs(output_dir,exist_ok=True)
+    
     prompts  = yaml.load(
                 open(f'{Path.home()}/q-diffusion/scripts/prompt.yaml','r'),Loader=yaml.FullLoader
                 )
+    
     Images = []
-    for prompt,seed in prompts[:12]:
+    num_images = 2 * (num_images // 2)
+    for ind in range(num_images):
+        prompt = prompts[ind]['prompt']
+        seed = prompts[ind]['seed']
         seed_everything(seed)
         img =  gen_image_from_prompt(model,sampler,prompt,ddim_steps=ddim_steps,use_autocast=False)
-        # PIL image to numpy array
+        if output_dir is not None:
+            img.save(f'{output_dir}/gen_image_{ind}.png')
         img = np.array(img)
         Images.append(img)
     
-    upper = np.concatenate(Images[:6],axis=1)
-    lower = np.concatenate(Images[6:],axis=1)
+    upper = np.concatenate(Images[:num_images//2],axis=1)
+    lower = np.concatenate(Images[num_images//2:],axis=1)
     final = np.concatenate([upper,lower],axis=0)
     final = Image.fromarray(final.astype(np.uint8))
     if output_dir is not None:
-        final.save(f'{output_dir}/gen_images.png',final)
+        os.makedirs(output_dir,exist_ok=True)
+        final.save(f'{output_dir}/gen_images.png')
     return final
+
+
+
+if __name__ == '__main__':
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument('--cali_ckpt',type=str,required=True)
+    argparser.add_argument('--nbit',type=int,required=True)
+    argparser.add_argument('--symmetric',type=bool,required=True)
+    argparser.add_argument('--quant_act_ops',type=str,required=True)
+    argparser.add_argument('--ddim_steps',type=int,required=True)
+    argparser.add_argument('--act_bits',type=int,required=True) 
+    argparser.add_argument('--split_to_16bits',type=bool,required=True)
+    argparser.add_argument('--naive_quant_weights',type=bool,required=True)
+    argparser.add_argument('--output_dir',type=str,required=False,default='./output')
+    argparser.add_argument('--quant_act',type=bool,required=False,default=True)
+    argparser.add_argument('--weight_quant',type=bool,required=False,default=True)
+    argparser.add_argument('--num_images',type=int,required=False,default=12)
         
+    args = argparser.parse_args()
+    print(args)
+    gen_ver_images(args.cali_ckpt,args.nbit,args.symmetric,args.quant_act_ops,args.ddim_steps,args.act_bits,
+                   args.split_to_16bits,args.naive_quant_weights,
+                   args.output_dir,args.quant_act,args.weight_quant,args.num_images)

@@ -424,6 +424,18 @@ def resume_cali_model(qnn, ckpt_path, cali_data, quant_act=False, act_quant_mode
             delta_data = m.delta.data
             delattr(m, "delta")
             m.delta = delta_data
+    
+        elif isinstance(m, UniformAffineQuantizer):
+                if m.zero_point is not None and 'weight' in m.full_name:
+                    if m.zero_point.shape == ():
+                        zero_data = m.zero_point.item()
+                        delattr(m, "zero_point")
+                        assert(int(zero_data) == zero_data)
+                        m.zero_point = int(zero_data)
+                    else:
+                        zero_data = m.zero_point.data
+                        delattr(m, "zero_point")
+                        m.zero_point = zero_data
 
     if quant_act:       
         print("Initializing act quantization parameters")
@@ -460,7 +472,12 @@ def resume_cali_model(qnn, ckpt_path, cali_data, quant_act=False, act_quant_mode
                 m.delta = delta_data
             elif isinstance(m, UniformAffineQuantizer):
                 if m.zero_point is not None:
-                    zero_data = m.zero_point.item()
-                    delattr(m, "zero_point")
-                    assert(int(zero_data) == zero_data)
-                    m.zero_point = int(zero_data)
+                    if m.zero_point.shape == ():
+                        zero_data = m.zero_point.item()
+                        delattr(m, "zero_point")
+                        assert(int(zero_data) == zero_data)
+                        m.zero_point = int(zero_data)
+                    else:
+                        zero_data = m.zero_point.data
+                        delattr(m, "zero_point")
+                        m.zero_point = zero_data
