@@ -1,15 +1,14 @@
-
 from pathlib import Path
 import os
 import sys
 import yaml
 from qdiff import (
-    QuantModel, QuantModule,QuantOp ,BaseQuantBlock,
-    block_reconstruction, layer_reconstruction,
+    QuantModel,
+    #QuantModule,QuantOp ,BaseQuantBlock,
+    #block_reconstruction, layer_reconstruction,
 )
-from qdiff.utils import resume_cali_model, get_train_samples
+from qdiff.utils import resume_cali_model#, get_train_samples
 from scripts.gen_image import gen_image_from_prompt
-
 import torch
 from omegaconf import OmegaConf
 from txt2img import load_model_from_config
@@ -26,7 +25,8 @@ from PIL import Image
 
 
 
-def gen_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,split_to_16bits,                                 ,
+
+def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,split_to_16bits,naive_quant_weights,
                output_dir='./output',
                quant_act=True,weight_quant=True):
 
@@ -75,4 +75,4 @@ def gen_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,split_
     if output_dir is not None:
         final.save(f'{output_dir}/gen_images.png',final)
     return final
-    
+        
