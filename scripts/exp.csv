@@ -1,7 +1,7 @@
 name,cali_ckpt,bit,symmetric,quant_act_ops,ddim_steps,act_bits,split_to_16bits,naive_quant_weights,wandb
 naive-50step,/workspace/sd/qdiff_naive/output_quantization/2025-02-19-21-53-28/ckpt.pth,8,True,True,50,8,False,True,
 naive-20steps,/workspace/sd/qdiff_naive/output_quantization/2025-02-19-21-53-28/ckpt.pth,8,True,True,20,16,False,True,
-qdiff-50steps,,8,True,True,50,8,False,False,https://wandb.ai/hailo-mo/q-diff-split_to_16bits/runs/nqt2e440?nw=nwusernadavgeva
+qdiff-50steps,/workspace/sd/qdiff/output_quantization/2025-02-19-16-20-37/ckpt.pth,8,True,True,50,8,False,False,https://wandb.ai/hailo-mo/q-diff-split_to_16bits/runs/nqt2e440?nw=nwusernadavgeva
 qdiff-50steps-split-to-16,/workspace/sd/qdiff/output_quantization/2025-02-18-16-00-01/,8,True,True,50,8,True,False,https://wandb.ai/hailo-mo/q-diff-split_to_16bits/runs/c8i0m0lk?nw=nwusernadavgeva
 qdiff-20steps,/workspace/sd/qdiff/output_quantization/2025-02-19-16-22-19/ckpt.pth,8,True,True,20,16,False,False,https://wandb.ai/hailo-mo/q-diff-split_to_16bitsddim_steps-20/runs/qs2en13u?nw=nwusernadavgeva
 ,,,,,,,,,
