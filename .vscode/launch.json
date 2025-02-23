@@ -40,7 +40,7 @@
                 "console": "integratedTerminal",
                 "args": [
                         "--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",
-                        "--weight_bit", "8","--quant_mode", "qdiff",
+                        "--weight_bit", "8",
                         "--cali_batch_size", "8", "--no_grad_ckpt", "--split", "--running_stat","--sm_abit","16",
                         //"--ddim_steps", "50","--cali_n", "128","--cali_st", "25",
                         "--ddim_steps", "20","--cali_n", "160","--cali_st", "20",
@@ -52,6 +52,8 @@
                         "--quant_act_ops",
                         //"--split_to_16bits",
                         "--act_bit", "16",
+                        //"--quant_mode", "qdiff",
+                        "--quant_mode", "rtn",
                         //"--accum_batches",
                         //"--resume_w", 
                         //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-02-11-11-54-51/wc_ckpt.pth",

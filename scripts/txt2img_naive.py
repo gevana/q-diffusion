@@ -283,7 +283,7 @@ def main():
     )
     parser.add_argument(
         "--quant_mode", type=str, default="symmetric", 
-        choices=["linear", "squant", "qdiff"], 
+        choices=["linear", "squant", "qdiff","rtn"], 
         help="quantization mode to use"
     )
 
@@ -406,6 +406,7 @@ def main():
                 "split_to_16bits": opt.split_to_16bits,
                 "accum_batches": opt.accum_batches,
                 "act_bit": opt.act_bit,
+                "act_quant_mode": opt.quant_mode,
                 "sm_abit": opt.sm_abit,
                 "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
@@ -443,11 +444,11 @@ def main():
     if opt.ptq:
         if opt.split:
             setattr(sampler.model.model.diffusion_model, "split", True)
-        if opt.quant_mode == 'qdiff':
+        if opt.quant_mode == 'qdiff' or opt.quant_mode == 'rtn':
             wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'max',
                          'symmetric':opt.symmetric_weight,'debug':opt.debug}
             aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
-                         'leaf_param':  opt.quant_act, 'debug':opt.debug,'split_to_16bits':opt.split_to_16bits}
+                         'leaf_param':  opt.quant_act, 'debug':opt.debug,'split_to_16bits':opt.split_to_16bits,'act_quant_mode' :opt.quant_mode}
             if opt.resume:
                 logger.info('Load with min-max quick initialization')
                 wq_params['scale_method'] = 'max'
@@ -543,7 +544,7 @@ def main():
                     if isinstance(m, UniformAffineQuantizer) and 'weight' in m.full_name:
                         m.zero_point = nn.Parameter(m.zero_point)
                         m.delta = nn.Parameter(m.delta)
-                    torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
+                    #torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
                 qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
                 if False:
@@ -579,7 +580,12 @@ def main():
                                     iters=opt.cali_iters_a, act_quant=True,opt_mode='mse', 
                                     lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond,
                                     accum_batches= accum_batches)
-                    recon_model(qnn)
+                    if  opt.quant_mode == 'qdiff':
+                        recon_model(qnn)
+                    elif opt.quant_mode == 'rtn':
+                        print('RTN calibration was done in stat collection')
+                    else:
+                        raise NotImplementedError(f"quant_mode {opt.quant_mode} not implemented")
                     qnn.set_quant_state(weight_quant=True, act_quant=True)
                 
                 logger.info(f"Saving calibrated quantized UNet model to {outpath}/ckpt.pth")

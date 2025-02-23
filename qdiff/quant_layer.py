@@ -46,7 +46,7 @@ class UniformAffineQuantizer(nn.Module):
     :param scale_method: determines the quantization scale and zero point
     """
     def __init__(self, n_bits: int = 8, symmetric: bool = False, channel_wise: bool = False, scale_method: str = 'max',
-                 leaf_param: bool = False, always_zero: bool = False,debug = False, **kwargs):
+                 leaf_param: bool = False, always_zero: bool = False,debug = False,act_quant_mode='qdiff' ,**kwargs):
         super(UniformAffineQuantizer, self).__init__()
         self.sym = symmetric
         # assert 2 <= n_bits <= 8, 'bitwidth not supported'
@@ -61,6 +61,7 @@ class UniformAffineQuantizer(nn.Module):
         self.running_stat = False
         self.always_zero = symmetric
         self.debug = debug
+        self.act_quant_mode = act_quant_mode
         if self.leaf_param:
             self.x_min, self.x_max = None, None
 
@@ -95,9 +96,14 @@ class UniformAffineQuantizer(nn.Module):
 
         x_min = x.data.min()
         x_max = x.data.max()
-        self.x_min = self.x_min * act_range_momentum + x_min * (1 - act_range_momentum)
-        self.x_max = self.x_max * act_range_momentum + x_max * (1 - act_range_momentum)
-
+        if self.act_quant_mode == 'rtn':
+            self.x_min = min(self.x_min, x_min)
+            self.x_max = max(self.x_max, x_max)
+        elif self.act_quant_mode == 'qdiff':
+            self.x_min = self.x_min * act_range_momentum + x_min * (1 - act_range_momentum)
+            self.x_max = self.x_max * act_range_momentum + x_max * (1 - act_range_momentum)
+        else:
+            raise NotImplementedError(f'{self.act_quant_mode=} not supported')
         if self.sym:
             # x_min, x_max = -x_absmax if x_min < 0 else 0, x_absmax
             delta = torch.max(self.x_min.abs(), self.x_max.abs()) / self.n_levels
@@ -247,11 +253,11 @@ class QuantModule(nn.Module):
         # de-activate the quantized forward default
         self.use_weight_quant = False
         self.use_act_quant = False
-        self.act_quant_mode = act_quant_mode
+        self.act_quant_mode = act_quant_params['act_quant_mode']
         self.disable_act_quant = disable_act_quant
         # initialize quantizer
         self.weight_quantizer = UniformAffineQuantizer(**self.weight_quant_params)
-        if self.act_quant_mode == 'qdiff':
+        if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
             self.act_quantizer = UniformAffineQuantizer(**self.act_quant_params)
         self.split_act = 0
         self.split_weight = 0
@@ -276,12 +282,12 @@ class QuantModule(nn.Module):
 
         if not self.disable_act_quant and self.use_act_quant:
             if self.split_act != 0:
-                if self.act_quant_mode == 'qdiff':
+                if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
                     input_0 = self.act_quantizer(input[:, :self.split_act, :, :])
                     input_1 = self.act_quantizer_0(input[:, self.split_act:, :, :])
                 input = torch.cat([input_0, input_1], dim=1)
             else:
-                if self.act_quant_mode == 'qdiff':
+                if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
                     input = self.act_quantizer(input)
         if self.use_weight_quant:
             if self.split_weight != 0:
@@ -311,7 +317,7 @@ class QuantModule(nn.Module):
         if not isinstance(self,QuantOp):
             self.weight_quantizer_0 = UniformAffineQuantizer(**self.weight_quant_params)
         
-        if self.act_quant_mode == 'qdiff':
+        if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
             if self.act_quant_params['split_to_16bits']:
                 self.split_act = False
                 self.act_quantizer = UniformAffineQuantizer(**{**self.act_quant_params,'n_bits':16})
@@ -319,7 +325,7 @@ class QuantModule(nn.Module):
                 self.act_quantizer_0 = UniformAffineQuantizer(**self.act_quant_params)
 
     def set_running_stat(self, running_stat: bool):
-        if self.act_quant_mode == 'qdiff':
+        if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
             self.act_quantizer.running_stat = running_stat
             if self.split_act != 0:
                 self.act_quantizer_0.running_stat = running_stat

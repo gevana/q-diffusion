@@ -107,7 +107,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
             cur_out = cached_outs[idx].to(device)
             cur_grad = cached_grads[idx] if opt_mode != 'mse' else None
 
-            optimizer.zero_grad()
+            #optimizer.zero_grad()
             out_quant = layer(cur_inp)
 
             err, rec_loss, round_loss = loss_func(out_quant, cur_out, cur_grad)
