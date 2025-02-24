@@ -283,7 +283,7 @@ def main():
     )
     parser.add_argument(
         "--quant_mode", type=str, default="symmetric", 
-        choices=["linear", "squant", "qdiff"], 
+        choices=["linear", "squant", "qdiff","rtn"], 
         help="quantization mode to use"
     )
 
@@ -406,6 +406,7 @@ def main():
                 "split_to_16bits": opt.split_to_16bits,
                 "accum_batches": opt.accum_batches,
                 "act_bit": opt.act_bit,
+                "act_quant_mode": opt.quant_mode,
                 "sm_abit": opt.sm_abit,
                 "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
@@ -443,11 +444,11 @@ def main():
     if opt.ptq:
         if opt.split:
             setattr(sampler.model.model.diffusion_model, "split", True)
-        if opt.quant_mode == 'qdiff':
+        if opt.quant_mode == 'qdiff' or opt.quant_mode == 'rtn':
             wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
                          'symmetric':opt.symmetric_weight,'debug':opt.debug}
             aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
-                         'leaf_param':  opt.quant_act, 'debug':opt.debug,'split_to_16bits':opt.split_to_16bits}
+                         'leaf_param':  opt.quant_act, 'debug':opt.debug,'split_to_16bits':opt.split_to_16bits,'act_quant_mode' :opt.quant_mode}
             if opt.resume:
                 logger.info('Load with min-max quick initialization')
                 wq_params['scale_method'] = 'max'
@@ -513,7 +514,7 @@ def main():
                             logger.info("Finished calibrating input and mid blocks, saving temporary checkpoint...")
                             in_recon_done = True
                             torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
-                        if name.isdigit() and int(name) >= 9:
+                        if False:#name.isdigit() and int(name) >= 9:
                             logger.info(f"Saving temporary checkpoint at {name}...")
                             torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
                             
@@ -538,6 +539,7 @@ def main():
                     logger.info("Doing weight calibration")
                     recon_model(qnn)
                     logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
+                    add_full_name_to_module(qnn)
                     for m in qnn.model.modules():
                         if isinstance(m, AdaRoundQuantizer):
                             m.zero_point = nn.Parameter(m.zero_point)
@@ -553,7 +555,7 @@ def main():
                 if opt.quant_act:
                     logger.info("UNet model")
                     #logger.info(model.model)                    
-                    logger.info("Doing activation calibration")
+                    logger.info(f"Doing activation calibration {opt.quant_mode=}")
                     # Initialize activation quantization parameters
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():
@@ -578,7 +580,12 @@ def main():
                                     iters=opt.cali_iters_a, act_quant=True,opt_mode='mse', 
                                     lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond,
                                     accum_batches= accum_batches)
-                    recon_model(qnn)
+                    if  opt.quant_mode == 'qdiff':
+                        recon_model(qnn)
+                    elif opt.quant_mode == 'rtn':
+                        logger.info("RTN calibration was done in stats collection")
+                    else:
+                        raise NotImplementedError(f"quant_mode={opt.quant_mode} not implemented")
                     qnn.set_quant_state(weight_quant=True, act_quant=True)
                 
                 logger.info(f"Saving calibrated quantized UNet model to {outpath}/ckpt.pth")
