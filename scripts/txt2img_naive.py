@@ -555,7 +555,7 @@ def main():
                 if opt.quant_act:
                     logger.info("UNet model")
                     #logger.info(model.model)                    
-                    logger.info("Doing activation calibration")
+                    logger.info(f"Doing activation calibration {opt.quant_mode=}")
                     # Initialize activation quantization parameters
                     qnn.set_quant_state(True, True)
                     with torch.no_grad():

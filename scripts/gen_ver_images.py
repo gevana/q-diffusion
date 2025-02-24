@@ -43,7 +43,8 @@ def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,
 
 
     wq_params = {'n_bits': nbit, 'channel_wise': True, 'scale_method': 'max','symmetric':symmetric}
-    aq_params = {'n_bits': act_bits, 'channel_wise': False, 'scale_method': 'max', 'leaf_param':  True,'split_to_16bits':split_to_16bits}
+    aq_params = {'n_bits': act_bits, 'channel_wise': False, 'scale_method': 'max', 'leaf_param':  True,
+                 'split_to_16bits':split_to_16bits,'act_quant_mode':'qdiff'}
 
     qnn = QuantModel(
             model=sampler.model.model.diffusion_model, weight_quant_params=wq_params, act_quant_params=aq_params,
