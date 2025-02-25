@@ -416,7 +416,8 @@ def main():
                 "cali_ckpt": opt.cali_ckpt,
                 "cali_data_path": opt.cali_data_path,
                 "prompt": opt.prompt,
-                "debug": opt.debug,   
+                "debug": opt.debug,  
+                "outpath": outpath,  
             },
     )
 

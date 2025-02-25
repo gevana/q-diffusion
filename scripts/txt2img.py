@@ -387,10 +387,10 @@ def main():
 
     
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-split_to_16bits"
+    p_name = "q-diff-rtn"
     
-    if opt.ddim_steps != 50:
-        p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
+    #if opt.ddim_steps != 50:
+    #    p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
     if opt.debug:
         p_name =  p_name + "-debug"
     
@@ -416,7 +416,8 @@ def main():
                 "cali_ckpt": opt.cali_ckpt,
                 "cali_data_path": opt.cali_data_path,
                 "prompt": opt.prompt,
-                "debug": opt.debug,   
+                "debug": opt.debug, 
+                "outpath": outpath, 
             },
     )
 
