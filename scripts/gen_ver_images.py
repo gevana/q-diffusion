@@ -2,11 +2,11 @@ from pathlib import Path
 import os
 import sys
 import yaml
-from qdiff import (
-    QuantModel,
-    #QuantModule,QuantOp ,BaseQuantBlock,
+from qdiff import QuantModel
+
+from qdiff.quant_layer import QuantOp , QuantModule #BaseQuantBlock,
     #block_reconstruction, layer_reconstruction,
-)
+
 from qdiff.utils import resume_cali_model#, get_train_samples
 from scripts.gen_image import gen_image_from_prompt
 import torch
@@ -19,11 +19,59 @@ from qdiff.adaptive_rounding import AdaRoundQuantizer
 import numpy as np
 import matplotlib.pyplot as plt
 #from mo_utils.utils.plot_aux import plot_hist, myim
-from src.utils.torch_utils import add_full_name_to_module
+from src.utils.torch_utils import add_full_name_to_module , add_snr_hook_to_model, collect_snr_hook
 from PIL import Image
 import argparse
 
 
+def set_ffn_act_native(qnn,use_act_quant=True,use_weight_quant=True):
+    for i in [1,2,4,5,7,8]:
+        print(f'setting ffn input_blocks {i} to {use_act_quant=}, {use_weight_quant=}')
+        qnn.model.input_blocks[i][1].transformer_blocks[0].ff.net[2].use_act_quant = use_act_quant
+        qnn.model.input_blocks[i][1].transformer_blocks[0].ff.net[2].use_weight_quant = use_weight_quant
+    for i in [3,4,5,6,7,8,9,10,11]:
+        print(f'setting ffn output_blocks {i} to {use_act_quant=}, {use_weight_quant=}')
+        qnn.model.output_blocks[i][1].transformer_blocks[0].ff.net[2].use_act_quant = use_act_quant
+        qnn.model.output_blocks[i][1].transformer_blocks[0].ff.net[2].use_weight_quant = use_weight_quant
+
+    print(f'setting ffn middle_block[1] to {use_act_quant=}, {use_weight_quant=}')
+    qnn.model.middle_block[1].transformer_blocks[0].ff.net[2].use_act_quant = use_act_quant
+    qnn.model.middle_block[1].transformer_blocks[0].ff.net[2].use_weight_quant = use_weight_quant
+
+
+
+
+def set_Silu_act_native(qnn,use_act_quant=True):
+    for i in [1,2,4,5,7,8,10,11]:
+        print(f'setting Silu input_blocks {i} to {use_act_quant=}')
+        qnn.model.input_blocks[i][0].in_layers[1].use_act_quant = use_act_quant
+        qnn.model.input_blocks[i][0].out_layers[1].use_act_quant = use_act_quant
+    for i in [3,4,5,6,7,8,9,10,11]:
+        print(f'setting Silu output_blocks {i} to {use_act_quant=}')
+        qnn.model.output_blocks[i][0].in_layers[1].use_act_quant = use_act_quant
+        qnn.model.output_blocks[i][0].out_layers[1].use_act_quant = use_act_quant
+    qnn.model.out[1].use_act_quant = use_act_quant
+
+def set_split_act_native(qnn,use_act_quant=True,use_weight_quant=True):
+    for i in range(11):
+        print(f'setting output block {i} skip_connection and in_layers[0]  to {use_act_quant=}, {use_weight_quant=}')
+        qnn.model.output_blocks[i][0].skip_connection.use_act_quant = use_act_quant
+        qnn.model.output_blocks[i][0].skip_connection.use_weight_quant = use_weight_quant
+        qnn.model.output_blocks[i][0].in_layers[0].use_act_quant = use_act_quant
+
+
+def set_QuantOp_act_native(qnn,use_act_quant):
+    for module in qnn.model.modules():
+        if isinstance(module,QuantOp):
+            print(f'setting QuantOp {module.full_name} to {use_act_quant=}')
+            module.use_act_quant = use_act_quant
+
+def set_QuantModule_act_native(qnn,use_act_quant,use_weight_quant):
+    for module in qnn.model.modules():
+        if isinstance(module,QuantModule) and not isinstance(module,QuantOp):
+            print(f'setting QuantModel {module.full_name} to {use_act_quant=} and {use_weight_quant=}')
+            module.use_act_quant = use_act_quant
+            module.use_weight_quant = use_weight_quant
 
 
 def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,
@@ -56,12 +104,26 @@ def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,
     qnn.set_grad_ckpt(False)
 
 
+
     if weight_quant or act_quant:
         cali_data = (torch.randn(1, 4, 64, 64), torch.randint(0, 1000, (1,)), torch.randn(1, 77, 768))
         resume_cali_model(qnn, cali_ckpt, cali_data, act_quant, "qdiff", cond=True,naive_weights_quant=naive_quant_weights)
     qnn.set_quant_state(weight_quant=weight_quant, act_quant=act_quant)
 
+    #set_split_act_native(qnn,use_act_quant=False,use_weight_quant=True)
+    #set_QuantOp_act_native(qnn,use_act_quant=False)
     
+
+    #set_QuantModule_act_native(qnn,use_act_quant=True,use_weight_quant=False)
+    if False:
+        set_ffn_act_native(qnn,use_act_quant=False,use_weight_quant=True)
+        set_Silu_act_native(qnn,use_act_quant=False)
+        qnn.model.input_blocks[6][0].op.use_act_quant = False
+        qnn.model.input_blocks[9][0].op.use_act_quant = False
+
+
+    #add_snr_hook_to_model(qnn,QuantModule)
+
     if output_dir is not None:
         os.makedirs(output_dir,exist_ok=True)
     
@@ -89,19 +151,26 @@ def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,
         final = np.concatenate([upper,lower],axis=0)
         final = Image.fromarray(final.astype(np.uint8))
         if output_dir is not None:
+            snr = collect_snr_hook(qnn,QuantModule)
             os.makedirs(output_dir,exist_ok=True)
             final.save(f'{output_dir}/gen_images.png')
             print(f'Images saved to {output_dir}/gen_images.png')
+            torch.save(snr,f'{output_dir}/snr.pth')
+            print(f'SNR saved to {output_dir}/snr.pth')
         return final
 
     else:
         seed_everything(seed)
         img =  gen_image_from_prompt(model,sampler,prompt,ddim_steps=ddim_steps,
-                                    use_autocast=False,n_samples=5,n_rows=0,n_iter=2)
+                                    use_autocast=False,n_samples=1,n_rows=0,n_iter=1)
         if output_dir is not None:
             img.save(f'{output_dir}/gen_image.png')
             print(f'Image saved to {output_dir}/gen_image.png')
-        return img
+            snr = collect_snr_hook(qnn,QuantModule)
+            if snr:
+                torch.save(snr,f'{output_dir}/snr.pth')
+                print(f'SNR saved to {output_dir}/snr.pth')
+        return img ,qnn
 
 
 

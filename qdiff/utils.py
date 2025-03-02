@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def save_inp_oup_data(model: QuantModel, layer: Union[QuantModule, BaseQuantBlock], cali_data: torch.Tensor,
                       asym: bool = False, act_quant: bool = False, batch_size: int = 32, keep_gpu: bool = True,
-                      cond: bool = False, is_sm: bool = False):
+                      cond: bool = False, is_sm: bool = False,rev: bool = False):
     """
     Save input data and output data of a particular layer/block over calibration dataset.
 
@@ -34,7 +34,7 @@ def save_inp_oup_data(model: QuantModel, layer: Union[QuantModule, BaseQuantBloc
     :return: input and output data
     """
     device = next(model.parameters()).device
-    get_inp_out = GetLayerInpOut(model, layer, device=device, asym=asym, act_quant=act_quant)
+    get_inp_out = GetLayerInpOut(model, layer, device=device, asym=asym, act_quant=act_quant, rev=rev)
     cached_batches = []
     cached_inps, cached_outs = None, None
     torch.cuda.empty_cache()
@@ -214,10 +214,11 @@ class DataSaverHook:
 
 class GetLayerInpOut:
     def __init__(self, model: QuantModel, layer: Union[QuantModule, BaseQuantBlock],
-                 device: torch.device, asym: bool = False, act_quant: bool = False):
+                 device: torch.device, asym: bool = False, act_quant: bool = False,rev:bool=False):
         self.model = model
         self.layer = layer
         self.asym = asym
+        self.rev = rev #reverse the order of weight quantization and activation quantization
         self.device = device
         self.act_quant = act_quant
         self.data_saver = DataSaverHook(store_input=True, store_output=True, stop_forward=True)
@@ -236,7 +237,7 @@ class GetLayerInpOut:
             if self.asym:
                 # Recalculate input with network quantized
                 self.data_saver.store_output = False
-                self.model.set_quant_state(weight_quant=True, act_quant=self.act_quant)
+                self.model.set_quant_state(weight_quant= (not self.rev) or (not self.act_quant), act_quant= self.act_quant or self.rev)
                 try:
                     _ = self.model(x, timesteps, context)
                 except StopForwardException:
@@ -246,7 +247,7 @@ class GetLayerInpOut:
         handle.remove()
 
         self.model.set_quant_state(False, False)
-        self.layer.set_quant_state(True, self.act_quant)
+        self.layer.set_quant_state((not self.rev) or (not self.act_quant) , self.act_quant or self.rev)
         self.model.train()
 
         if len(self.data_saver.input_store) > 1 and torch.is_tensor(self.data_saver.input_store[1]):

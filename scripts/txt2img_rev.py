@@ -387,7 +387,7 @@ def main():
 
     
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-naive_rtn1"
+    p_name = "q-diff-rev"
     
     #if opt.ddim_steps != 50:
     #    p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
@@ -416,8 +416,8 @@ def main():
                 "cali_ckpt": opt.cali_ckpt,
                 "cali_data_path": opt.cali_data_path,
                 "prompt": opt.prompt,
-                "debug": opt.debug,  
-                "outpath": outpath,  
+                "debug": opt.debug, 
+                "outpath": outpath, 
             },
     )
 
@@ -446,7 +446,7 @@ def main():
         if opt.split:
             setattr(sampler.model.model.diffusion_model, "split", True)
         if opt.quant_mode == 'qdiff' or opt.quant_mode == 'rtn':
-            wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'max',
+            wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
                          'symmetric':opt.symmetric_weight,'debug':opt.debug}
             aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
                          'leaf_param':  opt.quant_act, 'debug':opt.debug,'split_to_16bits':opt.split_to_16bits,'act_quant_mode' :opt.quant_mode}
@@ -468,144 +468,132 @@ def main():
                 logger.info('Not use gradient checkpointing for transformer blocks')
                 qnn.set_grad_ckpt(False)
 
-            if opt.resume:
-                cali_data = (torch.randn(1, 4, 64, 64), torch.randint(0, 1000, (1,)), torch.randn(1, 77, 768))
-                resume_cali_model(qnn, opt.cali_ckpt, cali_data, opt.quant_act, "qdiff", cond=opt.cond,naive_weights_quant=True)
-            else:
-                logger.info(f"Sampling data from {opt.cali_data_path} at {opt.cali_st} timesteps for calibration")
-                sample_data = torch.load(opt.cali_data_path)
-                cali_data = get_train_samples(opt, sample_data, opt.ddim_steps)
-                del(sample_data)
-                if opt.debug:
-                    print(f"Calibration data shape debug reduction:")
-                    cali_data = [x[:opt.cali_batch_size*2] for x in cali_data]
-                    opt.cali_iters = 20 if not opt.accum_batches else 24
-                    opt.cali_iters_a = 20 if not opt.accum_batches else 32
+            
+            logger.info(f"Sampling data from {opt.cali_data_path} at {opt.cali_st} timesteps for calibration")
+            sample_data = torch.load(opt.cali_data_path)
+            cali_data = get_train_samples(opt, sample_data, opt.ddim_steps)
+            del(sample_data)
+            if opt.debug:
+                print(f"Calibration data shape debug reduction:")
+                cali_data = [x[:opt.cali_batch_size*2] for x in cali_data]
+                opt.cali_iters = 20 if not opt.accum_batches else 24
+                opt.cali_iters_a = 20 if not opt.accum_batches else 32
 
 
-                gc.collect()
-                logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape} {cali_data[2].shape}")
+            gc.collect()
+            logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape} {cali_data[2].shape}")
 
-                cali_xs, cali_ts, cali_cs = cali_data
-                if opt.resume_w:
-                    resume_cali_model(qnn, opt.cali_ckpt, cali_data, False, cond=opt.cond)
-                    for m in qnn.model.modules():
-                        if isinstance(m,UniformAffineQuantizer):
-                            if m.inited:
-                                import ipdb; ipdb.set_trace()
-                else:
-                    logger.info("Initializing weight quantization parameters")
-                    qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
-                    _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
-                    logger.info("Initializing has done!") 
-                # Kwargs for weight rounding calibration
-                kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
-                            iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
-                            warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
-                            #accum_batches= 4 if opt.accum_batches else 1)
-                            accum_batches = 1)
-
-                def recon_model(model):
-                    """
-                    Block reconstruction. For the first and last layers, we can only apply layer reconstruction.
-                    """
-                    for name, module in model.named_children():
-                        logger.info(f"{name} {isinstance(module, BaseQuantBlock)}")
-                        if name == 'output_blocks':
-                            logger.info("Finished calibrating input and mid blocks, saving temporary checkpoint...")
-                            in_recon_done = True
-                            torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
-                        if False:#name.isdigit() and int(name) >= 9:
-                            logger.info(f"Saving temporary checkpoint at {name}...")
-                            torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
-                            
-                        if isinstance(module, QuantModule):
-                            if module.ignore_reconstruction is True:
-                                logger.info('Ignore reconstruction of layer {}'.format(module.full_name))
-                                continue
-                            else:
-                                logger.info('Reconstruction for layer {}'.format(module.full_name))
-                                layer_reconstruction(qnn, module, **kwargs)
-                        elif isinstance(module, BaseQuantBlock):
-                            if module.ignore_reconstruction is True:
-                                logger.info('Ignore reconstruction of block {}'.format(module.full_name))
-                                continue
-                            else:
-                                logger.info('Reconstruction for block {}'.format(module.full_name))
-                                block_reconstruction(qnn, module, **kwargs)
+            cali_xs, cali_ts, cali_cs = cali_data
+            
+            def recon_model(model):
+                """
+                Block reconstruction. For the first and last layers, we can only apply layer reconstruction.
+                """
+                for name, module in model.named_children():
+                    logger.info(f"{name} {isinstance(module, BaseQuantBlock)}")
+                    if name == 'output_blocks':
+                        logger.info("Finished calibrating input and mid blocks, saving temporary checkpoint...")
+                        in_recon_done = True
+                        torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
+                    if False:#name.isdigit() and int(name) >= 9:
+                        logger.info(f"Saving temporary checkpoint at {name}...")
+                        torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
+                        
+                    if isinstance(module, QuantModule):
+                        if module.ignore_reconstruction is True:
+                            logger.info('Ignore reconstruction of layer {}'.format(module.full_name))
+                            continue
                         else:
-                            recon_model(module)
-
-                if False: #not opt.resume_w:
-                    logger.info("Doing weight calibration")
-                    recon_model(qnn)
-                    logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
-                add_full_name_to_module(qnn)
-                for m in qnn.model.modules():
-                    if isinstance(m, UniformAffineQuantizer) and 'weight' in m.full_name:
-                        m.zero_point = nn.Parameter(m.zero_point)
-                        m.delta = nn.Parameter(m.delta)
-                    #torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
-                qnn.set_quant_state(weight_quant=True, act_quant=False)
-                
-                if False:
-                    grid_wq_only = gen_image_from_prompt(model,sampler=sampler,prompt=opt.prompt,)
-                    wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
-
-
-                if opt.quant_act:
-                    logger.info("UNet model")
-                    #logger.info(model.model)                    
-                    logger.info(f"Doing activation calibration {opt.quant_mode=}")
-                    # Initialize activation quantization parameters
-                    qnn.set_quant_state(True, True)
-                    with torch.no_grad():
-                        act_bs = 8//2
-                        inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
-                        _ = qnn(cali_xs[inds[:act_bs//2]].cuda(), cali_ts[inds[:act_bs//2]].cuda(), cali_cs[inds[:act_bs//2]].cuda())
-                        if opt.running_stat:
-                            logger.info('Running stat for activation quantization')
-                            inds = np.arange(cali_xs.shape[0])
-                            np.random.shuffle(inds)
-                            qnn.set_running_stat(True, opt.rs_sm_only)
-                            for i in trange(int(cali_xs.size(0) / act_bs)):
-                                _ = qnn(cali_xs[inds[i * act_bs:(i + 1) * act_bs]].cuda(), 
-                                    cali_ts[inds[i * act_bs:(i + 1) * act_bs]].cuda(),
-                                    cali_cs[inds[i * act_bs:(i + 1) * act_bs]].cuda())
-                            qnn.set_running_stat(False, opt.rs_sm_only)
-                        gc.collect()
-                    act_bs = opt.cali_batch_size // 2 if not opt.quant_act_ops else opt.cali_batch_size // 4
-                    accum_batches =  opt.cali_batch_size // act_bs # 2 if opt.accum_batches else 1
-                    kwargs = dict(
-                                    cali_data=cali_data, batch_size=opt.cali_batch_size//2, 
-                                    iters=opt.cali_iters_a, act_quant=True,opt_mode='mse', 
-                                    lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond,
-                                    accum_batches= accum_batches)
-                    if  opt.quant_mode == 'qdiff':
-                        recon_model(qnn)
-                    elif opt.quant_mode == 'rtn':
-                        print('RTN calibration was done in stat collection')
+                            logger.info('Reconstruction for layer {}'.format(module.full_name))
+                            layer_reconstruction(qnn, module, **kwargs)
+                    elif isinstance(module, BaseQuantBlock):
+                        if module.ignore_reconstruction is True:
+                            logger.info('Ignore reconstruction of block {}'.format(module.full_name))
+                            continue
+                        else:
+                            logger.info('Reconstruction for block {}'.format(module.full_name))
+                            block_reconstruction(qnn, module, **kwargs)
                     else:
-                        raise NotImplementedError(f"quant_mode {opt.quant_mode} not implemented")
-                    qnn.set_quant_state(weight_quant=True, act_quant=True)
+                        recon_model(module)
+            
+
+            if opt.quant_act:
+                logger.info("UNet model")
+                #logger.info(model.model)                    
+                logger.info(f"Doing activation calibration {opt.quant_mode=}")
+                # Initialize activation quantization parameters
+                qnn.set_quant_state(False, True)
+                with torch.no_grad():
+                    act_bs = 8//2
+                    inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
+                    _ = qnn(cali_xs[inds[:act_bs//2]].cuda(), cali_ts[inds[:act_bs//2]].cuda(), cali_cs[inds[:act_bs//2]].cuda())
+                    if opt.running_stat:
+                        logger.info('Running stat for activation quantization')
+                        inds = np.arange(cali_xs.shape[0])
+                        np.random.shuffle(inds)
+                        qnn.set_running_stat(True, opt.rs_sm_only)
+                        for i in trange(int(cali_xs.size(0) / act_bs)):
+                            _ = qnn(cali_xs[inds[i * act_bs:(i + 1) * act_bs]].cuda(), 
+                                cali_ts[inds[i * act_bs:(i + 1) * act_bs]].cuda(),
+                                cali_cs[inds[i * act_bs:(i + 1) * act_bs]].cuda())
+                        qnn.set_running_stat(False, opt.rs_sm_only)
+                    gc.collect()
+                act_bs = opt.cali_batch_size // 2 if not opt.quant_act_ops else opt.cali_batch_size // 4
+                accum_batches =  opt.cali_batch_size // act_bs # 2 if opt.accum_batches else 1
+                kwargs = dict(
+                                cali_data=cali_data, batch_size=opt.cali_batch_size//2, 
+                                iters=opt.cali_iters_a, act_quant=True,opt_mode='mse', 
+                                lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond,
+                                accum_batches= accum_batches,rev = True)
                 
-                logger.info(f"Saving calibrated quantized UNet model to {outpath}/ckpt.pth")
-                for m in qnn.model.modules():
-                    if isinstance(m, AdaRoundQuantizer):
-                        m.zero_point = nn.Parameter(m.zero_point)
-                        m.delta = nn.Parameter(m.delta)
-                    elif isinstance(m, UniformAffineQuantizer) and opt.quant_act:
-                        if m.zero_point is not None:
-                            if not torch.is_tensor(m.zero_point):
-                                m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
-                            else:
-                                m.zero_point = nn.Parameter(m.zero_point)
-                torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
-                torch.save(aq_params, os.path.join(outpath, "aq_params.pth"))
-                torch.save(wq_params, os.path.join(outpath, "wq_params.pth"))
+                if  opt.quant_mode == 'qdiff':
+                    recon_model(qnn)
+                elif opt.quant_mode == 'rtn':
+                    logger.info("RTN calibration was done in stats collection")
+                else:
+                    raise NotImplementedError(f"quant_mode={opt.quant_mode} not implemented")
+                qnn.set_quant_state(weight_quant=True, act_quant=True)
+                
 
-            sampler.model.model.diffusion_model = qnn
 
+            
+            logger.info("Initializing weight quantization parameters")
+            qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
+            _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
+            logger.info("Initializing has done!") 
+            # Kwargs for weight rounding calibration
+            weight_bs = opt.cali_batch_size // 4 # if not opt.quant_act_ops else opt.cali_batch_size // 8
+            accum_batches =  opt.cali_batch_size // weight_bs # 2 if opt.accum_batches else 1
+            kwargs = dict(cali_data=cali_data, batch_size=weight_bs, 
+                        iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
+                        warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
+                        #accum_batches= 4 if opt.accum_batches else 1)
+                        accum_batches = accum_batches ,rev = True)
+            
+            logger.info("Doing weight calibration")
+            qnn.set_quant_state(True, True)
+            recon_model(qnn)
+            logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
+            add_full_name_to_module(qnn)
+            
+           
+            logger.info(f"Saving calibrated quantized UNet model to {outpath}/ckpt.pth")
+            for m in qnn.model.modules():
+                if isinstance(m, AdaRoundQuantizer):
+                    m.zero_point = nn.Parameter(m.zero_point)
+                    m.delta = nn.Parameter(m.delta)
+                elif isinstance(m, UniformAffineQuantizer) : #and opt.quant_act:
+                    if m.zero_point is not None:
+                        if not torch.is_tensor(m.zero_point):
+                            m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
+                        else:
+                            m.zero_point = nn.Parameter(m.zero_point)
+            torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
+            torch.save(aq_params, os.path.join(outpath, "aq_params.pth"))
+            torch.save(wq_params, os.path.join(outpath, "wq_params.pth"))
+
+    qnn.set_quant_state(True, True)        
+    sampler.model.model.diffusion_model = qnn
     logging.info("Creating invisible watermark encoder (see https://github.com/ShieldMnt/invisible-watermark)...")
     wm = "StableDiffusionV1"
     wm_encoder = WatermarkEncoder()

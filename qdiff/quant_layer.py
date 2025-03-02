@@ -97,8 +97,10 @@ class UniformAffineQuantizer(nn.Module):
         x_min = x.data.min()
         x_max = x.data.max()
         if self.act_quant_mode == 'rtn':
-            self.x_min = min(self.x_min, x_min)
-            self.x_max = max(self.x_max, x_max)
+            #self.x_min = min(self.x_min, x_min)
+            #self.x_max = max(self.x_max, x_max)
+            self.x_min = self.x_min * act_range_momentum + x_min * (1 - act_range_momentum)
+            self.x_max = self.x_max * act_range_momentum + x_max * (1 - act_range_momentum)
         elif self.act_quant_mode == 'qdiff':
             self.x_min = self.x_min * act_range_momentum + x_min * (1 - act_range_momentum)
             self.x_max = self.x_max * act_range_momentum + x_max * (1 - act_range_momentum)

@@ -1,0 +1,14 @@
+name,ddim_steps,act_quant_mode,act_bits,naive_quant_weights,quant_act_ops,split_to_16bits,bit,symmetric,wandb,cali_ckpt
+lsq8-ada-50s,50,qdiff,8,False,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-rtn/runs/jjsboebt?nw=nwusernadavgeva,/workspace/sd/qdiff/output_quantization_rtn/2025-02-24-17-54-28/ckpt.pth
+rtn8-ada-50s,50,rtn,8,False,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-rtn/runs/8pa62o3p?nw=nwusernadavgeva,/workspace/sd/qdiff/output_quantization_rtn/2025-02-24-17-55-03/ckpt.pth
+lsq8-ada-20s,20,qdiff,8,False,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-rtn/runs/8wanrvoh?nw=nwusernadavgeva,/workspace/sd/qdiff/output_quantization_rtn/2025-02-25-10-11-54/ckpt.pth
+rtn8-ada-20s,20,rtn,8,False,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-rtn/runs/fxmtxubo?nw=nwusernadavgeva,/workspace/sd/qdiff/output_quantization_rtn/2025-02-26-11-17-28/ckpt.pth
+lsq8-rtn-50s,50,qdiff,8,True,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-naive/runs/z7m68d2c?nw=nwusernadavgeva,/workspace/sd/qdiff_naive/rtn/output_quantization/2025-02-24-14-44-42/ckpt.pth
+rtn8-rtn-50s,50,rtn,8,True,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-naive/runs/ep67etdq?nw=nwusernadavgeva,/workspace/sd/qdiff_naive/rtn/output_quantization/2025-02-23-17-22-20/ckpt.pth
+lsq8-rtn-20s,20,qdiff,8,True,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-naive/runs/m5ydw0zb?nw=nwusernadavgeva,/workspace/sd/qdiff_naive/rtn/output_quantization/2025-02-25-10-07-01/ckpt.pth
+rtn16-rtn-20s,20,rtn,16,True,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-naive/runs/k0sqfdxz?nw=nwusernadavgeva,/workspace/sd/qdiff_naive/rtn/output_quantization/2025-02-23-17-30-34/ckpt.pth
+rtn8-rtn-20s,20,rtn,8,True,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-naive/runs/r9avocrx?nw=nwusernadavgeva,/workspace/sd/qdiff_naive/rtn/output_quantization/2025-02-26-11-19-23/ckpt.pth
+rtn*8-rtn-20s,20,rtn1,8,True,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-naive_rtn1/runs/kdneaocw?nw=nwusernadavgeva,/workspace/sd/qdiff_naive/rtn1/output_quantization/2025-02-27-13-57-03/ckpt.pth
+rtn*8-rtn-50s,50,rtn1,8,True,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-naive_rtn1/runs/9cdkg6jm?nw=nwusernadavgeva,/workspace/sd/qdiff_naive/rtn1/output_quantization/2025-02-27-13-56-13/ckpt.pth
+rtn*8-ada-20s,20,rtn1,8,False,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-rtn1/runs/h7iywwcl?nw=nwusernadavgeva,/workspace/sd/qdiff/output_quantization_rtn/2025-02-27-14-02-33/ckpt.pth
+rtn*8-ada-50s,50,rtn1,8,False,True,False,8,True,https://wandb.ai/hailo-mo/q-diff-rtn1/runs/a0mzm6rj?nw=nwusernadavgeva,/workspace/sd/qdiff/output_quantization_rtn/2025-02-27-14-05-16/ckpt.pth

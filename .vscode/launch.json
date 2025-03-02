@@ -11,8 +11,8 @@
                         "--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",
                         "--weight_bit", "8","--quant_mode", "qdiff",
                         "--cali_batch_size", "8", "--no_grad_ckpt", "--split", "--running_stat","--sm_abit","16",
-                        //"--ddim_steps", "50","--cali_n", "128","--cali_st", "25",
-                        "--ddim_steps", "20","--cali_n", "160","--cali_st", "20",
+                        "--ddim_steps", "50","--cali_n", "128","--cali_st", "25",
+                        //"--ddim_steps", "20","--cali_n", "160","--cali_st", "20",
                         "--cali_data_path",
                         //"/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
                         //"/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps50.pt",
@@ -20,14 +20,12 @@
                         "--outdir", "output_quantization","--symmetric_weight","--quant_act",
                         "--quant_act_ops",
                         //"--split_to_16bits",
-                        //"--act_bit", "16",
+                        "--act_bit", "8",
                         //"--accum_batches",
                         //"--quant_mode", "qdiff",
                         "--quant_mode", "rtn",
-                        //"--resume_w", 
+                        "--resume_w", 
                         //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-02-11-11-54-51/wc_ckpt.pth",
-                        //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/8bit_sym/wc_ckpt.pth",
-                        //"--cali_ckpt", "/fastdata/users/nadavg/sd/qdiff/output_quantization/2025-01-22-16-40-17/wc_ckpt.pth", // wbit8 sym weight
                         "--debug"
                         ],
                 "env": {
@@ -44,16 +42,16 @@
                         "--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",
                         "--weight_bit", "8",
                         "--cali_batch_size", "8", "--no_grad_ckpt", "--split", "--running_stat","--sm_abit","16",
-                        //"--ddim_steps", "50","--cali_n", "128","--cali_st", "25",
-                        "--ddim_steps", "20","--cali_n", "160","--cali_st", "20",
+                        "--ddim_steps", "50","--cali_n", "128","--cali_st", "25",
+                        //"--ddim_steps", "20","--cali_n", "160","--cali_st", "20",
                         "--cali_data_path",
                         //"/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
-                        //"/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps50.pt",
-                        "/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps20.pt",
+                        "/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps50.pt",
+                        //"/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps20.pt",
                         "--outdir", "output_quantization","--symmetric_weight","--quant_act",
                         "--quant_act_ops",
                         //"--split_to_16bits",
-                        "--act_bit", "16",
+                        //"--act_bit", "16",
                         //"--quant_mode", "qdiff",
                         "--quant_mode", "rtn",
                         //"--accum_batches",
@@ -65,6 +63,59 @@
                         ],
                 "env": {
                     "CUDA_VISIBLE_DEVICES": "2"
+                }
+            },
+            {
+                "name": "sdq-diff-rev",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "scripts/txt2img_rev.py",
+                "console": "integratedTerminal",
+                "args": [
+                        "--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",
+                        "--weight_bit", "8",
+                        "--cali_batch_size", "8", "--no_grad_ckpt", "--split", "--running_stat","--sm_abit","16",
+                        //"--ddim_steps", "50","--cali_n", "128","--cali_st", "25","--cali_data_path", "/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps50.pt",
+                        "--ddim_steps", "20","--cali_n", "160","--cali_st", "20","--cali_data_path","/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps20.pt",
+                        //"/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
+                        "--outdir", "output_quantization","--symmetric_weight","--quant_act",
+                        "--quant_act_ops",
+                        //"--split_to_16bits",
+                        //"--act_bit", "16",
+                        "--quant_mode", "qdiff",
+                        //"--quant_mode", "rtn",
+                        //"--accum_batches",
+                        //"--resume_w", 
+                        //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-02-11-11-54-51/wc_ckpt.pth",
+                        //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/8bit_sym/wc_ckpt.pth",
+                        //"--cali_ckpt", "/fastdata/users/nadavg/sd/qdiff/output_quantization/2025-01-22-16-40-17/wc_ckpt.pth", // wbit8 sym weight
+                        "--debug"
+                        ],
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "2"
+                }
+            },
+            {
+                "name": "sdq-gen-images",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "scripts/gen_ver_images.py",
+                "console": "integratedTerminal",
+                "args": [
+                        "--cali_ckpt", "/workspace/sd/qdiff_naive/rtn/output_quantization/2025-02-23-17-22-20/ckpt.pth",
+                        "--nbit","8", "--symmetric","True",
+                        "--quant_act_ops", "True",
+                        "--ddim_steps", "50","--act_bits", "8","--split_to_16bits", "False",
+                        "--naive_quant_weights", "True",
+                        "--act_quant","true","--weight_quant","true",
+                        "--num_images", "12",
+                        "--output_dir", "output_quantization/rtn/",
+                        "--prompt", "a puppy wearing a hat",
+                        ],
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "4",
+                    "QT_DEBUG_PLUGINS": "1",
+                    "QT_QPA_PLATFORM": "offscreen",
                 }
             },
     ]

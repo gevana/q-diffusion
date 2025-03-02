@@ -15,7 +15,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
                          asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
                          warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0,
                          multi_gpu: bool = False, cond: bool = False, is_sm: bool = False,
-                         accum_batches=1):
+                         accum_batches=1,rev = False):
     """
     Block reconstruction to optimize the output from each block.
 
@@ -39,7 +39,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     :accum_batches : num of batches to accumulate before backprop 
     """
     model.set_quant_state(False, False)
-    block.set_quant_state(True, act_quant)
+    block.set_quant_state((not rev) or (not act_quant) , act_quant or rev)
     round_mode = 'learned_hard_sigmoid'
     
     prefix = f"{block.full_name}_weight_opt" if not act_quant else f"{block.full_name}_act_opt"
@@ -125,8 +125,9 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     print(f"cond {cond}")
     # cached_inps, cached_outs = save_inp_oup_data(
         # model, block, cali_data, asym, act_quant, batch_size, keep_gpu=False, cond=cond, is_sm=is_sm)
+    
     cached_inps, cached_outs = save_inp_oup_data(
-        model, block, cali_data, asym, act_quant, 8, keep_gpu=False, cond=cond, is_sm=is_sm)
+        model, block, cali_data, asym, act_quant, 8 if not rev else 4 , keep_gpu=False, cond=cond, is_sm=is_sm,rev=rev)
     if opt_mode != 'mse':
         cached_grads = save_grad_data(model, block, cali_data, act_quant, batch_size=batch_size)
     else:

@@ -15,7 +15,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
                          asym: bool = False, include_act_func: bool = True, b_range: tuple = (20, 2),
                          warmup: float = 0.0, act_quant: bool = False, lr: float = 4e-5, p: float = 2.0,
                          multi_gpu: bool = False, cond: bool = False, is_sm: bool = False,
-                         accum_batches=1):
+                         accum_batches=1,rev: bool = False):
     """
     Block reconstruction to optimize the output from each layer.
 
@@ -40,7 +40,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     """
 
     model.set_quant_state(False, False)
-    layer.set_quant_state(True, act_quant)
+    layer.set_quant_state((not rev) or (not act_quant), act_quant or rev)
     round_mode = 'learned_hard_sigmoid'
     prefix = f"{layer.full_name}_weight_opt" if not act_quant else f"{layer.full_name}_act_opt"
     delta_dict={}
@@ -93,7 +93,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     # cached_inps, cached_outs = save_inp_oup_data(
     #     model, layer, cali_data, asym, act_quant, batch_size, keep_gpu=False, cond=cond, is_sm=is_sm)
     cached_inps, cached_outs = save_inp_oup_data(
-        model, layer, cali_data, asym, act_quant, 8, keep_gpu=False, cond=cond, is_sm=is_sm)
+        model, layer, cali_data, asym, act_quant, 4 if rev else 8, keep_gpu=False, cond=cond, is_sm=is_sm,rev = rev)
     if opt_mode != 'mse':
         cached_grads = save_grad_data(model, layer, cali_data, act_quant, batch_size=batch_size)
     else:
