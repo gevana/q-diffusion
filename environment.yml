@@ -15,7 +15,7 @@ dependencies:
   - matplotlib
   - pip:
     - albumentations==0.4.3
-    - diffusers==0.3.0
+    - diffusers #==0.3.0
     - pudb==2019.2
     - invisible-watermark
     - imageio==2.9.0
@@ -38,7 +38,7 @@ dependencies:
     - PyYAML==6.0
     - six==1.16.0
     - tqdm==4.64.0
-    - transformers==4.22.2
+    - transformers #==4.22.2
     - omegaconf
     - gdown
     - libtmux

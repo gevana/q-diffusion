@@ -85,7 +85,8 @@
                         "--prompt", "a puppy wearing a hat",
                         ],
                 "env": {
-                    "CUDA_VISIBLE_DEVICES": "4"
+                    "CUDA_VISIBLE_DEVICES": "4",
+                    "QT_QPA_PLATFORM":"offscreen",
                 }
             },
     ]

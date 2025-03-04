@@ -157,6 +157,9 @@ def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
     :param max_period: controls the minimum frequency of the embeddings.
     :return: an [N x dim] Tensor of positional embeddings.
     """
+    if len(timesteps.shape) == 0:
+        timesteps = timesteps.reshape(1)
+
     if not repeat_only:
         half = dim // 2
         freqs = torch.exp(

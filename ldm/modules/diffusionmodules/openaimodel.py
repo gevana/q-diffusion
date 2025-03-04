@@ -752,6 +752,14 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
+
+        if context is None and 'encoder_hidden_states' in kwargs:
+            hf = True
+            context = kwargs['encoder_hidden_states']
+        else:
+            hf = False
+        print(f'{hf=}')
+
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
@@ -782,10 +790,13 @@ class UNetModel(nn.Module):
             h = module(h, emb, context, split=split)
         h = h.type(x.dtype)
         if self.predict_codebook_ids:
-            return self.id_predictor(h)
+            out =  self.id_predictor(h)
         else:
-            return self.out(h)
-
+            out =  self.out(h)
+        
+        if hf:
+            return out, 0
+        return out
 
 class EncoderUNetModel(nn.Module):
     """
