@@ -19,7 +19,7 @@ from qdiff.adaptive_rounding import AdaRoundQuantizer
 import numpy as np
 import matplotlib.pyplot as plt
 #from mo_utils.utils.plot_aux import plot_hist, myim
-from src.utils.torch_utils import add_full_name_to_module , add_snr_hook_to_model, collect_snr_hook
+from src.utils.torch_utils import add_full_name_to_module , add_snr_hook_to_model, collect_snr_hook,add_output_hook_to_model,collect_output_hook
 from PIL import Image
 import argparse
 
@@ -79,14 +79,15 @@ def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,
                     output_dir='./output',
                     act_quant=True,weight_quant=True,
                     num_images=12,
-                    prompt=None,seed=42):
+                    prompt=None,seed=42,
+                    ddim_discretize='uniform'):
 
     
     config = OmegaConf.load(f'{Path.home()}/q-diffusion/configs/stable-diffusion/v1-inference.yaml')
     model = load_model_from_config(config, "/fastdata/users/nadavg/sd/qdiff/sd-v1-4.ckpt")
     device = torch.device("cuda")
     model = model.to(device)
-    sampler = PLMSSampler(model)
+    sampler = PLMSSampler(model,ddim_discretize=ddim_discretize)
     setattr(sampler.model.model.diffusion_model, "split", True)
 
 
@@ -115,14 +116,19 @@ def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,
     
 
     #set_QuantModule_act_native(qnn,use_act_quant=True,use_weight_quant=False)
-    if False:
+    if True:
         set_ffn_act_native(qnn,use_act_quant=False,use_weight_quant=True)
         set_Silu_act_native(qnn,use_act_quant=False)
         qnn.model.input_blocks[6][0].op.use_act_quant = False
         qnn.model.input_blocks[9][0].op.use_act_quant = False
 
-
-    #add_snr_hook_to_model(qnn,QuantModule)
+    if args.snr:
+        print('Adding SNR hooks')
+        add_snr_hook_to_model(qnn,QuantModule)
+    
+    if args.save_outputs:
+        print('Adding output hooks')
+        add_output_hook_to_model(qnn,QuantModule)
 
     if output_dir is not None:
         os.makedirs(output_dir,exist_ok=True)
@@ -170,6 +176,11 @@ def gen_ver_images(cali_ckpt,nbit,symmetric,quant_act_ops,ddim_steps,act_bits,
             if snr:
                 torch.save(snr,f'{output_dir}/snr.pth')
                 print(f'SNR saved to {output_dir}/snr.pth')
+            outputs = collect_output_hook(qnn,QuantModule)
+            if outputs:
+                print(f'Outputs saved to {output_dir}/outputs_{act_quant=}_{weight_quant=}.npz')
+                np.savez(f'{output_dir}/outputs_{act_quant=}_{weight_quant=}.npz',outputs)
+                img.save(f'{output_dir}/gen_image_{act_quant=}_{weight_quant=}.png')
         return img ,qnn
 
 
@@ -199,7 +210,10 @@ if __name__ == '__main__':
     argparser.add_argument('--num_images',type=int,required=False,default=12)
     argparser.add_argument('--prompt',type=str,required=False,default='None')
     argparser.add_argument('--seed',type=int,required=False,default=42)
-        
+    argparser.add_argument('--snr',type=str,required=False,default='False')
+    argparser.add_argument('--save_outputs',type=str,required=False,default='False')    
+    argparser.add_argument('--ddim_discretize',type=str,choices=["uniform", "quad","uniform+"],default="uniform")    
+
     args = argparser.parse_args()
     args.symmetric = str_to_bool(args.symmetric)
     args.quant_act_ops = str_to_bool(args.quant_act_ops)
@@ -207,11 +221,16 @@ if __name__ == '__main__':
     args.naive_quant_weights = str_to_bool(args.naive_quant_weights)
     args.act_quant = str_to_bool(args.act_quant)
     args.weight_quant = str_to_bool(args.weight_quant)
+    args.snr = str_to_bool(args.snr)
+    args.save_outputs = str_to_bool(args.save_outputs)
+
     if args.prompt == 'None':
         args.prompt = None
 
     print(f'\n\n{args=}\n\n')
 
-    gen_ver_images(args.cali_ckpt,args.nbit,args.symmetric,args.quant_act_ops,args.ddim_steps,args.act_bits,
+    gen_ver_images(args.cali_ckpt,args.nbit,args.symmetric,args.quant_act_ops,
+                   args.ddim_steps,args.act_bits,
                    args.split_to_16bits,args.naive_quant_weights,
-                   args.output_dir,args.act_quant,args.weight_quant,args.num_images,args.prompt,args.seed)
+                   args.output_dir,args.act_quant,args.weight_quant,
+                   args.num_images,args.prompt,args.seed,args.ddim_discretize)

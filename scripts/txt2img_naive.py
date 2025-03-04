@@ -235,8 +235,8 @@ def main():
         "--precision",
         type=str,
         help="evaluate at this precision",
-        choices=["full", "autocast"],
-        default="autocast"
+        s=["full", "autocast"],
+        default="autocast"choice
     )
     # linear quantization configs
     parser.add_argument(

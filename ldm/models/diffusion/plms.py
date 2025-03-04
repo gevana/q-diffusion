@@ -9,11 +9,12 @@ from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, mak
 
 
 class PLMSSampler(object):
-    def __init__(self, model, schedule="linear", **kwargs):
+    def __init__(self, model, schedule="linear",ddim_discretize='uniform' ,**kwargs):
         super().__init__()
         self.model = model
         self.ddpm_num_timesteps = model.num_timesteps
         self.schedule = schedule
+        self.ddim_discretize = ddim_discretize
 
     def register_buffer(self, name, attr):
         if type(attr) == torch.Tensor:
@@ -88,7 +89,7 @@ class PLMSSampler(object):
                 if conditioning.shape[0] != batch_size:
                     print(f"Warning: Got {conditioning.shape[0]} conditionings but batch-size is {batch_size}")
 
-        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
+        self.make_schedule(ddim_num_steps=S,ddim_discretize=self.ddim_discretize, ddim_eta=eta, verbose=verbose)
         # sampling
         C, H, W = shape
         size = (batch_size, C, H, W)
