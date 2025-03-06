@@ -21,8 +21,16 @@ class QuantModel(nn.Module):
         if hasattr(model, 'image_size'):
             self.image_size = model.image_size
         self.specials = get_specials(act_quant_params['leaf_param'])
+        self.refacor_group_norm(self.model)
         self.quant_module_refactor(self.model, weight_quant_params, act_quant_params)
         self.quant_block_refactor(self.model, weight_quant_params, act_quant_params)
+
+    def refacor_group_norm(self, module: nn.Module):
+        for name, child_module in module.named_children():
+            if isinstance(child_module, nn.GroupNorm):
+                setattr(module, name, GroupNorm32(32, child_module.num_channels))
+            else:
+                self.refacor_group_norm(child_module)
 
     def quant_module_refactor(self, module: nn.Module, weight_quant_params: dict = {}, act_quant_params: dict = {}):
         """
