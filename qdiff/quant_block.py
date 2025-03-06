@@ -13,6 +13,7 @@ from ldm.modules.attention import exists, default
 
 from ddim.models.diffusion import ResnetBlock, AttnBlock, nonlinearity
 
+from diffusers.models.resnet import ResnetBlock2D
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,14 @@ class BaseQuantBlock(nn.Module):
                 m.set_quant_state(weight_quant, act_quant)
 
 
+
+
 class QuantResBlock(BaseQuantBlock, TimestepBlock):
     def __init__(
-        self, res: ResBlock, act_quant_params: dict = {}):
+        self, res: ResBlock, act_quant_params: dict = {},skip_init = False):
         super().__init__(act_quant_params)
+        if skip_init:
+            return
         self.channels = res.channels
         self.emb_channels = res.emb_channels
         self.dropout = res.dropout
@@ -114,6 +119,42 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
         if split != 0:
             return self.skip_connection(x, split=split) + h
         return self.skip_connection(x) + h
+
+class QuantResBlockHF15(QuantResBlock):
+    def __init__(self, res: ResnetBlock2D, act_quant_params: dict = {}):
+        #BaseQuantBlock.__init__(self,act_quant_params)
+        super().__init__(res,act_quant_params,skip_init = True)
+        self.channels = res.in_channels
+        #self.emb_channels = res.temb_channels
+        
+        self.dropout = res.dropout
+        self.out_channels = res.out_channels
+        
+        #self.use_conv = res.use_conv
+        
+        self.use_checkpoint = True #res.use_checkpoint
+        self.use_scale_shift_norm = False #res.use_scale_shift_norm
+
+        self.in_layers = nn.Sequential(res.norm1,res.nonlinearity,res.conv1)
+        self.output_scale_factor = res.output_scale_factor
+
+        self.updown = False #res.updown
+
+        self.h_upd = None #res.h_upd
+        self.x_upd = None #res.x_upd
+
+        self.skip_time_act = res.skip_time_act
+        if self.skip_time_act:
+            self.emb_layers = res.time_emb_proj
+        else:
+            self.emb_layers = nn.Sequential(res.nonlinearity,res.time_emb_proj)
+        
+        self.out_layers =  nn.Sequential(res.norm2,res.nonlinearity,res.dropout,res.conv2)
+        
+        if res.use_in_shortcut:
+            self.skip_connection = res.conv_shortcut
+        else:
+            self.skip_connection = nn.Identity()
 
 
 class QuantQKMatMul(BaseQuantBlock):
