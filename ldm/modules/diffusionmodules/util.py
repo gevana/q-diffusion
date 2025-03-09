@@ -215,6 +215,10 @@ class SiLU(nn.Module):
 
 
 class GroupNorm32(nn.GroupNorm):
+    def __init__(self,gn):
+        super().__init__(gn.num_groups, gn.num_channels, gn.eps, gn.affine)
+        self.weight = gn.weight
+        self.bias = gn.bias
     def forward(self, x,split=0):
         return super().forward(x.float()).type(x.dtype)
 

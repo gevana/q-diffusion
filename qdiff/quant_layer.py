@@ -243,10 +243,12 @@ class QuantModule(nn.Module):
             self.fwd_kwargs = dict()
             self.fwd_func = F.linear
         self.weight = org_module.weight
-        self.org_weight = org_module.weight.data.clone()
+        #self.org_weight = org_module.weight.data.clone()
+        self.register_buffer('org_weight', org_module.weight.data.clone())
         if org_module.bias is not None:
             self.bias = org_module.bias
-            self.org_bias = org_module.bias.data.clone()
+            #self.org_bias = org_module.bias.data.clone()
+            self.register_buffer('org_bias', org_module.bias.data.clone())
         else:
             self.bias = None
             self.org_bias = None

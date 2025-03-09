@@ -4,7 +4,8 @@ from qdiff.quant_block import get_specials, BaseQuantBlock
 from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock
 from qdiff.quant_block import QuantQKMatMul, QuantSMVMatMul, QuantBasicTransformerBlock, QuantAttnBlock
 from qdiff.quant_layer import QuantModule, StraightThrough, QuantOp
-from ldm.modules.attention import BasicTransformerBlock
+#from ldm.modules.attention import BasicTransformerBlock
+from diffusers.models.attention import BasicTransformerBlock
 from ldm.modules.diffusionmodules.util import GroupNorm32
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class QuantModel(nn.Module):
     def refacor_group_norm(self, module: nn.Module):
         for name, child_module in module.named_children():
             if isinstance(child_module, nn.GroupNorm):
-                setattr(module, name, GroupNorm32(32, child_module.num_channels))
+                setattr(module, name, GroupNorm32(child_module))
             else:
                 self.refacor_group_norm(child_module)
 

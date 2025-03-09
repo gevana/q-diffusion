@@ -4,11 +4,13 @@ import torch as th
 from torch import einsum
 import torch.nn as nn
 from einops import rearrange, repeat
+import copy 
 
 from qdiff.quant_layer import QuantModule, UniformAffineQuantizer, StraightThrough
 from ldm.modules.diffusionmodules.openaimodel import AttentionBlock, ResBlock, TimestepBlock, checkpoint
 from ldm.modules.diffusionmodules.openaimodel import QKMatMul, SMVMatMul
-from ldm.modules.attention import BasicTransformerBlock
+#from ldm.modules.attention import BasicTransformerBlock
+from diffusers.models.attention import BasicTransformerBlock
 from ldm.modules.attention import exists, default
 
 from ddim.models.diffusion import ResnetBlock, AttnBlock, nonlinearity
@@ -147,9 +149,9 @@ class QuantResBlockHF15(QuantResBlock):
         if self.skip_time_act:
             self.emb_layers = res.time_emb_proj
         else:
-            self.emb_layers = nn.Sequential(res.nonlinearity,res.time_emb_proj)
+            self.emb_layers = nn.Sequential(copy.deepcopy(res.nonlinearity),res.time_emb_proj)
         
-        self.out_layers =  nn.Sequential(res.norm2,res.nonlinearity,res.dropout,res.conv2)
+        self.out_layers =  nn.Sequential(res.norm2,copy.deepcopy(res.nonlinearity),res.dropout,res.conv2)
         
         if res.use_in_shortcut:
             self.skip_connection = res.conv_shortcut
@@ -279,7 +281,7 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.norm1 = tran.norm1
         self.norm2 = tran.norm2
         self.norm3 = tran.norm3
-        self.checkpoint = tran.checkpoint
+        self.checkpoint = getattr(tran,'checkpoint',True)
         # self.checkpoint = False
 
         # logger.info(f"quant attn matmul")
@@ -299,12 +301,14 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
 
         self.attn1.forward = MethodType(cross_attn_forward, self.attn1)
         self.attn2.forward = MethodType(cross_attn_forward, self.attn2)
+        self.attn1.to_out = nn.Sequential(self.attn1.to_out[0],self.attn1.to_out[1])
+        self.attn2.to_out = nn.Sequential(self.attn2.to_out[0],self.attn2.to_out[1])
         self.attn1.use_act_quant = False
         self.attn2.use_act_quant = False
 
-    def forward(self, x, context=None):
+    def forward(self, x, encoder_hidden_states=None,**kwargs):
         # print(f"x shape {x.shape} context shape {context.shape}")
-        return checkpoint(self._forward, (x, context), self.parameters(), self.checkpoint)
+        return checkpoint(self._forward, (x, encoder_hidden_states), self.parameters(), self.checkpoint)
 
     def _forward(self, x, context=None):
         if context is None:
@@ -435,7 +439,10 @@ class QuantAttnBlock(BaseQuantBlock):
 def get_specials(quant_act=False):
     specials = {
         ResBlock: QuantResBlock,
+        ResnetBlock2D:QuantResBlockHF15,
         BasicTransformerBlock: QuantBasicTransformerBlock,
+        #BasicTransformerBlock: QuantBasicTransformerBlock,
+        
         ResnetBlock: QuantResnetBlock,
         AttnBlock: QuantAttnBlock,
     }
