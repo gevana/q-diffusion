@@ -2,6 +2,16 @@
     "version": "0.2.0",
         "configurations": [
             {
+                "name": "gen-calibHF",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "scripts/gen_calibset_HF15.py",
+                "justMyCode": false,
+                "env": {
+                    "CUDA_VISIBLE_DEVICES": "2"
+                }
+            },
+            {
                 "name": "sdq-diff",
                 "type": "debugpy",
                 "request": "launch",
