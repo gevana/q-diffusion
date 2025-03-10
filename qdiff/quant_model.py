@@ -7,6 +7,7 @@ from qdiff.quant_layer import QuantModule, StraightThrough, QuantOp
 #from ldm.modules.attention import BasicTransformerBlock
 from diffusers.models.attention import BasicTransformerBlock
 from ldm.modules.diffusionmodules.util import GroupNorm32
+from src.utils.torch_utils import add_full_name_to_module
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,30 @@ class QuantModel(nn.Module):
         self.refacor_group_norm(self.model)
         self.quant_module_refactor(self.model, weight_quant_params, act_quant_params)
         self.quant_block_refactor(self.model, weight_quant_params, act_quant_params)
+        add_full_name_to_module(self.model)
+        self.split = kwargs.get('split', False)
+        if self.split:
+            self.add_spliter()
+            add_full_name_to_module(self.model)
+
+    def add_spliter(self):
+        #up_blocks[0]
+        self.model.up_blocks[0].resnets[0].set_split(1280)
+        self.model.up_blocks[0].resnets[1].set_split(1280)
+        self.model.up_blocks[0].resnets[2].set_split(1280)
+        #up_blocks[1]
+        self.model.up_blocks[1].resnets[0].set_split(1280)
+        self.model.up_blocks[1].resnets[1].set_split(1280)
+        self.model.up_blocks[1].resnets[2].set_split(1280)
+        #up_blocks[2]
+        self.model.up_blocks[2].resnets[0].set_split(1280)
+        self.model.up_blocks[2].resnets[1].set_split(640)
+        self.model.up_blocks[2].resnets[2].set_split(640)
+        #up_blocks[3]
+        self.model.up_blocks[3].resnets[0].set_split(640)
+        self.model.up_blocks[3].resnets[1].set_split(320)
+        self.model.up_blocks[3].resnets[2].set_split(320)
+        
 
     def refacor_group_norm(self, module: nn.Module):
         for name, child_module in module.named_children():

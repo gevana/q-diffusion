@@ -278,9 +278,9 @@ class QuantModule(nn.Module):
             assert(split == self.split)
         elif split != 0:
             logger.info(f"split at {split}!")
-            self.split_act = split
-            self.split_weight = split
-            self.set_split()
+            #self.split_act = split
+            #self.split_weight = split
+            self.set_split(split)
 
         if not self.disable_act_quant and self.use_act_quant:
             if self.split_act != 0:
@@ -315,7 +315,11 @@ class QuantModule(nn.Module):
         self.use_weight_quant = weight_quant
         self.use_act_quant = act_quant
 
-    def set_split(self):
+    def set_split(self,split):
+        logger.info(f"layer : {self.full_name} split at {split}!")
+        self.split_act = split
+        self.split_weight = split
+
         if not isinstance(self,QuantOp):
             self.weight_quantizer_0 = UniformAffineQuantizer(**self.weight_quant_params)
         

@@ -6,7 +6,7 @@ import torch.nn as nn
 from einops import rearrange, repeat
 import copy 
 
-from qdiff.quant_layer import QuantModule, UniformAffineQuantizer, StraightThrough
+from qdiff.quant_layer import QuantModule,QuantOp, UniformAffineQuantizer, StraightThrough
 from ldm.modules.diffusionmodules.openaimodel import AttentionBlock, ResBlock, TimestepBlock, checkpoint
 from ldm.modules.diffusionmodules.openaimodel import QKMatMul, SMVMatMul
 #from ldm.modules.attention import BasicTransformerBlock
@@ -157,6 +157,15 @@ class QuantResBlockHF15(QuantResBlock):
             self.skip_connection = res.conv_shortcut
         else:
             self.skip_connection = nn.Identity()
+
+        self.split = 0
+    
+    def set_split(self,split):
+        self.split = split
+        if isinstance(self.skip_connection,QuantModule):
+            self.skip_connection.set_split(split)
+        if isinstance(self.in_layers[0],QuantOp):
+            self.in_layers[0].set_split(split)    
 
 
 class QuantQKMatMul(BaseQuantBlock):
