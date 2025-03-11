@@ -16,9 +16,7 @@ import torch.nn as nn
 from torch import autocast
 from contextlib import nullcontext
 
-from ldm.util import instantiate_from_config
-from ldm.models.diffusion.ddim import DDIMSampler
-from ldm.models.diffusion.plms import PLMSSampler
+
 from qdiff import (
     QuantModel, QuantModule, BaseQuantBlock, 
     block_reconstruction, layer_reconstruction,
@@ -31,6 +29,8 @@ from transformers import AutoFeatureExtractor
 from src.utils.torch_utils import add_full_name_to_module
 import wandb
 from scripts.gen_image import gen_image_from_prompt
+
+from diffusers import StableDiffusionPipeline, UNet2DConditionModel
 
 logger = logging.getLogger(__name__)
 
@@ -430,21 +430,16 @@ def main():
     if opt.resume:
         logger.info(f"Resume from {opt.resume=} {opt.cali_ckpt}")
 
-    config = OmegaConf.load(f"{opt.config}")
-    model = load_model_from_config(config, f"{opt.ckpt}")
+
+    pipe = StableDiffusionPipeline.from_pretrained("SG161222/Realistic_Vision_V4.0_noVAE")
+    model = pipe.unet
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
 
-    if opt.plms:
-        sampler = PLMSSampler(model)
-    else:
-        sampler = DDIMSampler(model)
-
+  
     assert(opt.cond)
     if opt.ptq:
-        if opt.split:
-            setattr(sampler.model.model.diffusion_model, "split", True)
         if opt.quant_mode == 'qdiff' or opt.quant_mode == 'rtn':
             wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
                          'symmetric':opt.symmetric_weight,'debug':opt.debug}
@@ -457,8 +452,8 @@ def main():
             if opt.resume_w:
                 wq_params['scale_method'] = 'max'
             qnn = QuantModel(
-                model=sampler.model.model.diffusion_model, weight_quant_params=wq_params, act_quant_params=aq_params,
-                act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops)
+                model=model, weight_quant_params=wq_params, act_quant_params=aq_params,
+                act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops, split=opt.split)
             qnn.cuda()
             qnn.eval()
             # logging.info(qnn)
@@ -604,106 +599,25 @@ def main():
                 torch.save(aq_params, os.path.join(outpath, "aq_params.pth"))
                 torch.save(wq_params, os.path.join(outpath, "wq_params.pth"))
 
-            sampler.model.model.diffusion_model = qnn
+            
 
-    logging.info("Creating invisible watermark encoder (see https://github.com/ShieldMnt/invisible-watermark)...")
-    wm = "StableDiffusionV1"
-    wm_encoder = WatermarkEncoder()
-    wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
+    n_samples = opt.n_samples 
+    n_rows = opt.n_rows if opt.n_rows > 0 else n_samples
+    n_iter = opt.n_iter  
+    
+    qnn.set_quant_state(weight_quant=True, act_quant=opt.quant_act)
+    pipe.unet = qnn.model
+    pipe.to(device)
 
-    batch_size = opt.n_samples
-    n_rows = opt.n_rows if opt.n_rows > 0 else batch_size
-    if not opt.from_file:
-        prompt = opt.prompt
-        assert prompt is not None
-        data = [batch_size * [prompt]]
-
-    else:
-        logging.info(f"reading prompts from {opt.from_file}")
-        with open(opt.from_file, "r") as f:
-            data = f.read().splitlines()
-            data = list(chunk(data, batch_size))
-
-    sample_path = os.path.join(outpath, "samples")
-    os.makedirs(sample_path, exist_ok=True)
-    base_count = len(os.listdir(sample_path))
-    grid_count = len(os.listdir(outpath)) - 1
-
-    # write config out
-    sampling_file = os.path.join(outpath, "sampling_config.yaml")
-    sampling_conf = vars(opt)
-    with open(sampling_file, 'a+') as f:
-        yaml.dump(sampling_conf, f, default_flow_style=False)
-    if opt.verbose:
-        logger.info("UNet model")
-        logger.info(model.model)
-
-    start_code = None
-    if opt.fixed_code:
-        start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
-
-    precision_scope = nullcontext # autocast if opt.precision=="autocast" else nullcontext
-    with torch.no_grad():
-        with precision_scope("cuda"):
-            with model.ema_scope():
-                tic = time.time()
-                all_samples = list()
-                for n in trange(opt.n_iter, desc="Sampling"):
-                    for prompts in tqdm(data, desc="data"):
-                        uc = None
-                        if opt.scale != 1.0:
-                            uc = model.get_learned_conditioning(batch_size * [""])
-                        if isinstance(prompts, tuple):
-                            prompts = list(prompts)
-                        c = model.get_learned_conditioning(prompts)
-                        shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
-                        samples_ddim, _ = sampler.sample(S=opt.ddim_steps,
-                                                         conditioning=c,
-                                                         batch_size=opt.n_samples,
-                                                         shape=shape,
-                                                         verbose=False,
-                                                         unconditional_guidance_scale=opt.scale,
-                                                         unconditional_conditioning=uc,
-                                                         eta=opt.ddim_eta,
-                                                         x_T=start_code)
-
-                        x_samples_ddim = model.decode_first_stage(samples_ddim)
-                        x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
-                        x_samples_ddim = x_samples_ddim.cpu().permute(0, 2, 3, 1).numpy()
-
-                        x_checked_image = x_samples_ddim
-                        # x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
-
-                        x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
-
-                        if not opt.skip_save:
-                            for x_sample in x_checked_image_torch:
-                                x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                                img = Image.fromarray(x_sample.astype(np.uint8))
-                                img = put_watermark(img, wm_encoder)
-                                img.save(os.path.join(sample_path, f"{base_count:05}.png"))
-                                base_count += 1
-
-                        if not opt.skip_grid:
-                            all_samples.append(x_checked_image_torch)
-
-                if not opt.skip_grid:
-                    # additionally, save as grid
-                    grid = torch.stack(all_samples, 0)
-                    grid = rearrange(grid, 'n b c h w -> (n b) c h w')
-                    grid = make_grid(grid, nrow=n_rows)
-
-                    # to image
-                    grid = 255. * rearrange(grid, 'c h w -> h w c').cpu().numpy()
-                    img = Image.fromarray(grid.astype(np.uint8))
-                    img = put_watermark(img, wm_encoder)
-                    img.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
-                    grid_count += 1
+    generator = torch.Generator("cuda").manual_seed(42)  # 
+    I = pipe(opt.prompt,num_inference_steps=opt.ddim_steps,generator= generator).images[0]
+            
+    grid_count=0
+    I.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
+    grid_count += 1
 
                     #upload image to wandb
-                    wandb.log({"grid act and weights": [wandb.Image(grid)]})
-
-                toc = time.time()
+    wandb.log({"grid act and weights": [wandb.Image(I)]})
 
     logging.info(f"Your samples are ready and waiting for you here: \n{outpath} \n"
           f" \nEnjoy.")

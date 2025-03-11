@@ -269,6 +269,8 @@ class QuantModule(nn.Module):
 
         self.extra_repr = org_module.extra_repr
 
+        self.kkwargs = None
+
     @property
     def split(self):
         return self.split_act or self.split_weight
@@ -364,6 +366,7 @@ class QuantOp(QuantModule):
 
         self.activation_function = StraightThrough()
         self.ignore_reconstruction = False
+        self.kkwargs = None
 
     @property
     def use_weight_quant(self):

@@ -197,15 +197,19 @@ class DataSaverHook:
     """
     def __init__(self, store_input=False, store_output=False, stop_forward=False):
         self.store_input = store_input
+        self.store_kwargs = store_input
         self.store_output = store_output
         self.stop_forward = stop_forward
 
         self.input_store = None
+        self.kwargs_store = None
         self.output_store = None
 
-    def __call__(self, module, input_batch, output_batch):
+    def __call__(self, module, input_batch,kwargs_batch,output_batch):
         if self.store_input:
             self.input_store = input_batch
+        if self.store_kwargs:
+            self.kwargs_store = kwargs_batch
         if self.store_output:
             self.output_store = output_batch
         if self.stop_forward:
@@ -226,7 +230,8 @@ class GetLayerInpOut:
         self.model.eval()
         self.model.set_quant_state(False, False)
 
-        handle = self.layer.register_forward_hook(self.data_saver)
+        self.layer.save_kwargs = True
+        handle = self.layer.register_forward_hook(self.data_saver,with_kwargs=True)
         with torch.no_grad():
             try:
                 _ = self.model(x, timesteps, context)
@@ -244,16 +249,28 @@ class GetLayerInpOut:
                 self.data_saver.store_output = True
 
         handle.remove()
+       
 
         self.model.set_quant_state(False, False)
         self.layer.set_quant_state(True, self.act_quant)
         self.model.train()
 
         if len(self.data_saver.input_store) > 1 and torch.is_tensor(self.data_saver.input_store[1]):
-            return (self.data_saver.input_store[0].detach(),  
+            inout =  (self.data_saver.input_store[0].detach(),  
                 self.data_saver.input_store[1].detach()), self.data_saver.output_store.detach()
+        elif len(self.data_saver.input_store) == 1 and len(self.data_saver.kwargs_store)>0 and self.layer.kkwargs is not None:
+            #K = list(self._last_kwargs.keys())[0]
+            inout = (self.data_saver.input_store[0].detach(),self.data_saver.kwargs_store[self.layer.kkwargs].detach()), self.data_saver.output_store.detach()
         else:
-            return self.data_saver.input_store[0].detach(), self.data_saver.output_store.detach()
+            inout = self.data_saver.input_store[0].detach(), self.data_saver.output_store.detach()
+
+        
+        return inout    
+        # if len(self.data_saver.input_store) > 1 and torch.is_tensor(self.data_saver.input_store[1]):
+        #     return (self.data_saver.input_store[0].detach(),  
+        #         self.data_saver.input_store[1].detach()), self.data_saver.output_store.detach()
+        # else:
+        #     return self.data_saver.input_store[0].detach(), self.data_saver.output_store.detach()
 
 
 class GradSaverHook:

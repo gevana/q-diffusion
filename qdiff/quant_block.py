@@ -5,6 +5,7 @@ from torch import einsum
 import torch.nn as nn
 from einops import rearrange, repeat
 import copy 
+import inspect
 
 from qdiff.quant_layer import QuantModule,QuantOp, UniformAffineQuantizer, StraightThrough
 from ldm.modules.diffusionmodules.openaimodel import AttentionBlock, ResBlock, TimestepBlock, checkpoint
@@ -73,12 +74,13 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
         self.skip_connection = res.skip_connection
 
     def forward(self, x, emb=None, split=0):
-        """
+        """לא
         Apply the block to a Tensor, conditioned on a timestep embedding.
         :param x: an [N x C x ...] Tensor of features.
         :param emb: an [N x emb_channels] Tensor of timestep embeddings.
         :return: an [N x C x ...] Tensor of outputs.
         """
+
         if split != 0 and self.skip_connection.split == 0:
             return checkpoint(
                 self._forward, (x, emb, split), self.parameters(), self.use_checkpoint
@@ -159,6 +161,7 @@ class QuantResBlockHF15(QuantResBlock):
             self.skip_connection = nn.Identity()
 
         self.split = 0
+        self.kkwargs = 'emb'
     
     def set_split(self,split):
         self.split = split
@@ -314,9 +317,13 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.attn2.to_out = nn.Sequential(self.attn2.to_out[0],self.attn2.to_out[1])
         self.attn1.use_act_quant = False
         self.attn2.use_act_quant = False
+        self.kkwargs = 'encoder_hidden_states'
+        
 
     def forward(self, x, encoder_hidden_states=None,**kwargs):
         # print(f"x shape {x.shape} context shape {context.shape}")
+        # save encoder_hidden_states for hook
+    
         return checkpoint(self._forward, (x, encoder_hidden_states), self.parameters(), self.checkpoint)
 
     def _forward(self, x, context=None):
