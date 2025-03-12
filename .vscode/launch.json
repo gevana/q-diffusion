@@ -12,10 +12,11 @@
                 }
             },
             {
-                "name": "sdq-diff",
+                "name": "sdq-diffHF",
                 "type": "debugpy",
                 "request": "launch",
                 "program": "scripts/txt2img.py",
+                "justMyCode": false,
                 "console": "integratedTerminal",
                 "args": [
                         "--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",
@@ -25,8 +26,8 @@
                         "--ddim_steps", "20","--cali_n", "160","--cali_st", "20",
                         "--cali_data_path",
                         //"/fastdata/users/nadavg/sd/qdiff/sd_coco-s75_sample1024_allst.pt",
-                        //"/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps50.pt",
-                        "/fastdata/users/nadavg/sd/qdiff/gen_calib/calib_dict_steps20.pt",
+                        //"/fastdata/users/nadavg/sd/qdiff_hf15/gen_calib/calib_dict_steps50.pt",
+                        "/fastdata/users/nadavg/sd/qdiff_hf15/gen_calib/calib_dict_steps20.pt",
                         "--outdir", "output_quantization","--symmetric_weight","--quant_act",
                         "--quant_act_ops",
                         //"--split_to_16bits",
