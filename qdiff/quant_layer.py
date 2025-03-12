@@ -64,6 +64,8 @@ class UniformAffineQuantizer(nn.Module):
         self.act_quant_mode = act_quant_mode
         if self.leaf_param:
             self.x_min, self.x_max = None, None
+        
+        self.optimized = False
 
     def forward(self, x: torch.Tensor):
 
@@ -367,6 +369,8 @@ class QuantOp(QuantModule):
         self.activation_function = StraightThrough()
         self.ignore_reconstruction = False
         self.kkwargs = None
+
+        
 
     @property
     def use_weight_quant(self):

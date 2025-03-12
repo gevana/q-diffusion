@@ -19,7 +19,7 @@ from contextlib import nullcontext
 
 from qdiff import (
     QuantModel, QuantModule, BaseQuantBlock, 
-    block_reconstruction, layer_reconstruction,
+    block_reconstruction, layer_reconstruction,unetHF_reconstruction,
 )
 from qdiff.adaptive_rounding import AdaRoundQuantizer
 from qdiff.quant_layer import UniformAffineQuantizer
@@ -494,46 +494,18 @@ def main():
                     _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
                     logger.info("Initializing has done!") 
                 # Kwargs for weight rounding calibration
-                kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
+                
+
+                
+                if not opt.resume_w:
+                    logger.info("Doing weight calibration")
+                    #recon_model(qnn)
+                    kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
                             iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                             warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
                             #accum_batches= 4 if opt.accum_batches else 1)
                             accum_batches = 1)
-
-                def recon_model(model):
-                    """
-                    Block reconstruction. For the first and last layers, we can only apply layer reconstruction.
-                    """
-                    for name, module in model.named_children():
-                        logger.info(f"{name} {isinstance(module, BaseQuantBlock)}")
-                        if name == 'output_blocks':
-                            logger.info("Finished calibrating input and mid blocks, saving temporary checkpoint...")
-                            in_recon_done = True
-                            torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
-                        if False:#name.isdigit() and int(name) >= 9:
-                            logger.info(f"Saving temporary checkpoint at {name}...")
-                            torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
-                            
-                        if isinstance(module, QuantModule):
-                            if module.ignore_reconstruction is True:
-                                logger.info('Ignore reconstruction of layer {}'.format(module.full_name))
-                                continue
-                            else:
-                                logger.info('Reconstruction for layer {}'.format(module.full_name))
-                                layer_reconstruction(qnn, module, **kwargs)
-                        elif isinstance(module, BaseQuantBlock):
-                            if module.ignore_reconstruction is True:
-                                logger.info('Ignore reconstruction of block {}'.format(module.full_name))
-                                continue
-                            else:
-                                logger.info('Reconstruction for block {}'.format(module.full_name))
-                                block_reconstruction(qnn, module, **kwargs)
-                        else:
-                            recon_model(module)
-
-                if not opt.resume_w:
-                    logger.info("Doing weight calibration")
-                    recon_model(qnn)
+                    unetHF_reconstruction(qnn, **kwargs)
                     logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
                     add_full_name_to_module(qnn)
                     for m in qnn.model.modules():
@@ -577,7 +549,7 @@ def main():
                                     lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond,
                                     accum_batches= accum_batches)
                     if  opt.quant_mode == 'qdiff':
-                        recon_model(qnn)
+                        unetHF_reconstruction(qnn, **kwargs)
                     elif opt.quant_mode == 'rtn':
                         logger.info("RTN calibration was done in stats collection")
                     else:

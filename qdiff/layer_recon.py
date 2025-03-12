@@ -43,6 +43,7 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     layer.set_quant_state(True, act_quant)
     round_mode = 'learned_hard_sigmoid'
     prefix = f"{layer.full_name}_weight_opt" if not act_quant else f"{layer.full_name}_act_opt"
+
     delta_dict={}
 
     iters = iters // accum_batches
@@ -54,7 +55,11 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     if isinstance(layer, QuantOp) and not act_quant:
         logger.info(f'no weights optimization for {layer.full_name}')
         return
+    else:
+        logger.info(f"Start optimizing block {layer.full_name} with prefix {prefix}")
+
         
+    activation_to_optimize =  []
 
     if not act_quant:
         # Replace weight quantizer to AdaRoundQuantizer
@@ -63,22 +68,33 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
                                                         weight_tensor=layer.org_weight.data[:, :layer.split, ...])
                 layer.weight_quantizer_0 = AdaRoundQuantizer(uaq=layer.weight_quantizer_0, round_mode=round_mode,
                                                         weight_tensor=layer.org_weight.data[:, layer.split:, ...])
+                layer.weight_quantizer.soft_targets = True
+                layer.weight_quantizer_0.soft_targets = True
+
+                
+
         else:
             layer.weight_quantizer = AdaRoundQuantizer(uaq=layer.weight_quantizer, round_mode=round_mode,
                                                    weight_tensor=layer.org_weight.data)
-        layer.weight_quantizer.soft_targets = True
+            layer.weight_quantizer.soft_targets = True
 
         # Set up optimizer
         opt_params = [layer.weight_quantizer.alpha]
+        activation_to_optimize.append(layer.weight_quantizer)
         if layer.split != 0:
             opt_params += [layer.weight_quantizer_0.alpha]
+            activation_to_optimize.append(layer.weight_quantizer_0)
         optimizer = torch.optim.Adam(opt_params)
         scheduler = None
     else:
         # Use UniformAffineQuantizer to learn delta
         opt_params = [layer.act_quantizer.delta]
+        activation_to_optimize.append(layer.act_quantizer)
+        
         if layer.split != 0 and layer.act_quantizer_0.delta is not None:
             opt_params += [layer.act_quantizer_0.delta]
+            activation_to_optimize.append(layer.act_quantizer_0)
+        
         optimizer = torch.optim.Adam(opt_params, lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=0.)
 
@@ -145,6 +161,9 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
     # Reset original activation function
     if not include_act_func:
         layer.activation_function = org_act_func
+
+    for act in activation_to_optimize:
+        act.optimized = True
 
 
 class LossFunction:

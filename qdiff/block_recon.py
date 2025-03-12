@@ -43,6 +43,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     round_mode = 'learned_hard_sigmoid'
     
     prefix = f"{block.full_name}_weight_opt" if not act_quant else f"{block.full_name}_act_opt"
+    logger.info(f"Start optimizing block {block.full_name} with prefix {prefix}")
     delta_dict={}
 
     iters = iters // accum_batches
@@ -50,6 +51,8 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     if not include_act_func:
         org_act_func = block.activation_function
         block.activation_function = StraightThrough()
+
+    act_to_optimize = []
 
     if not act_quant:
         # Replace weight quantizer to AdaRoundQuantizer
@@ -72,14 +75,17 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
         for name, module in block.named_modules():
             if isinstance(module, QuantModule) and not isinstance(module, QuantOp):
                 opt_params += [module.weight_quantizer.alpha]
+                act_to_optimize.append(module.weight_quantizer)
                 if module.split != 0:
                     opt_params += [module.weight_quantizer_0.alpha]
+                    act_to_optimize.append(module.weight_quantizer_0)
         optimizer = torch.optim.Adam(opt_params)
         scheduler = None
     else:
         # Use UniformAffineQuantizer to learn delta
-        if hasattr(block.act_quantizer, 'delta') and block.act_quantizer.delta is not None:
+        if False: #hasattr(block.act_quantizer, 'delta') and block.act_quantizer.delta is not None:
             opt_params = [block.act_quantizer.delta]
+            act_to_optimize.append(block.act_quantizer)
         else:
             opt_params = []
         
@@ -91,26 +97,42 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
                 block.attn2.act_quantizer_q.delta,
                 block.attn2.act_quantizer_k.delta,
                 block.attn2.act_quantizer_v.delta]
+            act_to_optimize += [
+                block.attn1.act_quantizer_q,
+                block.attn1.act_quantizer_k,
+                block.attn1.act_quantizer_v,
+                block.attn2.act_quantizer_q,
+                block.attn2.act_quantizer_k,
+                block.attn2.act_quantizer_v]
+            
             if block.attn1.act_quantizer_w.n_bits != 16:
                 opt_params += [block.attn1.act_quantizer_w.delta]
+                act_to_optimize.append(block.attn1.act_quantizer_w)
             if block.attn2.act_quantizer_w.n_bits != 16:
                 opt_params += [block.attn2.act_quantizer_w.delta]
+                act_to_optimize.append(block.attn2.act_quantizer_w)
         if hasattr(block, 'act_quantizer_q'):
             opt_params += [
                 block.act_quantizer_q.delta,
                 block.act_quantizer_k.delta]
+            act_to_optimize += [
+                block.act_quantizer_q,
+                block.act_quantizer_k]
         if hasattr(block, 'act_quantizer_w'):
             opt_params += [block.act_quantizer_v.delta]
+            act_to_optimize.append(block.act_quantizer_v)
             if block.act_quantizer_w.n_bits != 16: # to do : add the same for act_quantizer ??
                 opt_params += [block.act_quantizer_w.delta]
+                act_to_optimize.append(block.act_quantizer_w)
 
-        
         for name, module in block.named_modules():
             if isinstance(module, (QuantModule , QuantOp)):
                 if module.act_quantizer.delta is not None:
                     opt_params += [module.act_quantizer.delta]
+                    act_to_optimize.append(module.act_quantizer)
                 if module.split_act != 0 and module.act_quantizer_0.delta is not None:
                     opt_params += [module.act_quantizer_0.delta]
+                    act_to_optimize.append(module.act_quantizer_0)
                
         optimizer = torch.optim.Adam(opt_params, lr=lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters, eta_min=0.)
@@ -194,6 +216,9 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     # Reset original activation function
     if not include_act_func:
         block.activation_function = org_act_func
+
+    for act in act_to_optimize:
+        act.optimized = True
 
 
 class LossFunction:

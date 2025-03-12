@@ -31,7 +31,8 @@ class BaseQuantBlock(nn.Module):
         self.use_act_quant = False
         # initialize quantizer
 
-        self.act_quantizer = UniformAffineQuantizer(**act_quant_params)
+        if act_quant_params : 
+            self.act_quantizer = UniformAffineQuantizer(**act_quant_params)
         self.activation_function = StraightThrough()
 
         self.ignore_reconstruction = False
@@ -127,7 +128,7 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
 class QuantResBlockHF15(QuantResBlock):
     def __init__(self, res: ResnetBlock2D, act_quant_params: dict = {}):
         #BaseQuantBlock.__init__(self,act_quant_params)
-        super().__init__(res,act_quant_params,skip_init = True)
+        super().__init__(res,act_quant_params ={} ,skip_init = True)
         self.channels = res.in_channels
         #self.emb_channels = res.temb_channels
         
@@ -223,7 +224,7 @@ class QuantSMVMatMul(BaseQuantBlock):
 class QuantAttentionBlock(BaseQuantBlock):
     def __init__(
         self, attn: AttentionBlock, act_quant_params: dict = {}):
-        super().__init__(act_quant_params)
+        super().__init__()
         self.channels = attn.channels
         self.num_heads = attn.num_heads
         self.use_checkpoint = attn.use_checkpoint
@@ -285,7 +286,7 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
     def __init__(
         self, tran: BasicTransformerBlock, act_quant_params: dict = {}, 
         sm_abit: int = 8):
-        super().__init__(act_quant_params)
+        super().__init__()
         self.attn1 = tran.attn1
         self.ff = tran.ff
         self.attn2 = tran.attn2
