@@ -301,6 +301,11 @@ def main():
         help="naive weight quantization"
     )
 
+    parser.add_argument(
+        "--rev_order",type=str, default  = "false",
+        help="first act quant then weight quant"
+    )
+
     # qdiff specific configs
     parser.add_argument(
         "--cali_st", type=int, default=1, 
@@ -400,7 +405,7 @@ def main():
     )
 
     opt.naive_weights_quant = str2bool(opt.naive_weights_quant)
-
+    opt.rev_order = str2bool(opt.rev_order)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
     p_name = "q-diff-hf1.5"
@@ -424,6 +429,7 @@ def main():
                 "act_bit": opt.act_bit,
                 "act_quant_mode": opt.quant_mode,
                 "naive_weights_quant": opt.naive_weights_quant,
+                "rev_order": opt.rev_order,
                 "sm_abit": opt.sm_abit,
                 "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
@@ -496,23 +502,15 @@ def main():
                 logger.info(f"Calibration data shape: {cali_data[0].shape} {cali_data[1].shape} {cali_data[2].shape}")
 
                 cali_xs, cali_ts, cali_cs = cali_data
-                if opt.resume_w:
-                    resume_cali_model(qnn, opt.cali_ckpt, cali_data, False, cond=opt.cond)
-                    for m in qnn.model.modules():
-                        if isinstance(m,UniformAffineQuantizer):
-                            if m.inited:
-                                import ipdb; ipdb.set_trace()
-                else:
+
+                if not opt.rev_order: # weight quantization first
                     logger.info("Initializing weight quantization parameters")
                     qnn.set_quant_state(True, False) # enable weight quantization, disable act quantization
                     _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
                     logger.info("Initializing has done!") 
                 # Kwargs for weight rounding calibration
-                
-
-                
-                if not opt.resume_w:
-                    if not opt.naive_weights_quant:
+            
+                    if not opt.naive_weights_quant: # adaptive rounding for weights
 
                         logger.info("Doing weight calibration")
                         #recon_model(qnn)
@@ -520,7 +518,7 @@ def main():
                                 iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
                                 warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
                                 #accum_batches= 4 if opt.accum_batches else 1)
-                                accum_batches = 1)
+                                accum_batches = 1,rev = opt.rev_order)
                         unetHF_reconstruction(qnn, **kwargs)
                         logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
                         add_full_name_to_module(qnn)
@@ -539,17 +537,13 @@ def main():
 
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
-                if False:
-                    grid_wq_only = gen_image_from_prompt(model,sampler=sampler,prompt=opt.prompt,)
-                    wandb.log({"grid weight only": [wandb.Image(grid_wq_only)]})
-
 
                 if opt.quant_act:
                     logger.info("UNet model")
                     #logger.info(model.model)                    
                     logger.info(f"Doing activation calibration {opt.quant_mode=}")
                     # Initialize activation quantization parameters
-                    qnn.set_quant_state(True, True)
+                    qnn.set_quant_state(weight_quant= not opt.rev_order, act_quant=True)
                     with torch.no_grad():
                         act_bs = 8//2
                         inds = np.random.choice(cali_xs.shape[0], act_bs, replace=False)
@@ -571,15 +565,40 @@ def main():
                                     cali_data=cali_data, batch_size=opt.cali_batch_size//2, 
                                     iters=opt.cali_iters_a, act_quant=True,opt_mode='mse', 
                                     lr=opt.cali_lr, p=opt.cali_p, cond=opt.cond,
-                                    accum_batches= accum_batches)
+                                    accum_batches= accum_batches,rev = opt.rev_order)
                     if  opt.quant_mode == 'qdiff':
                         unetHF_reconstruction(qnn, **kwargs)
                     elif opt.quant_mode == 'rtn':
                         logger.info("RTN calibration was done in stats collection")
                     else:
                         raise NotImplementedError(f"quant_mode={opt.quant_mode} not implemented")
-                    qnn.set_quant_state(weight_quant=True, act_quant=True)
+                    qnn.set_quant_state(weight_quant=not opt.rev_order, act_quant=True)
                 
+                if opt.rev_order: # weight quantization last
+                    logger.info("Initializing weight quantization parameters")
+                    qnn.set_quant_state(True, True)
+                    _ = qnn(cali_xs[:1].cuda(), cali_ts[:1].cuda(), cali_cs[:1].cuda())
+                    if not opt.naive_weights_quant: # adaptive rounding for weights
+                        logger.info("Doing weight calibration")
+                        #recon_model(qnn)
+                        weight_bs = opt.cali_batch_size // 4 # if not opt.quant_act_ops else opt.cali_batch_size // 8
+                        accum_batches =  opt.cali_batch_size // weight_bs # 2 if opt.accum_batches else 1
+                        
+                        kwargs = dict(cali_data=cali_data, batch_size=weight_bs, 
+                                iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
+                                warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
+                                #accum_batches= 4 if opt.accum_batches else 1)
+                                accum_batches = accum_batches,rev = opt.rev_order)
+                        
+                        unetHF_reconstruction(qnn, **kwargs)
+                        qnn.set_quant_state(True, True)
+                        logger.info(f"finished weight Calibration")
+                    else: # naive quant wieghts
+                        raise NotImplementedError("Naive weight quantization not implemented in rev_order")
+                
+
+
+
                 logger.info(f"Saving calibrated quantized UNet model to {outpath}/ckpt.pth")
                 for m in qnn.model.modules():
                     if isinstance(m, AdaRoundQuantizer):
