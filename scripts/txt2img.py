@@ -31,6 +31,7 @@ import wandb
 from scripts.gen_image import gen_image_from_prompt
 
 from diffusers import StableDiffusionPipeline, UNet2DConditionModel
+from scripts.gen_val_images import gen_images
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,12 @@ def main():
         help="replace act split with 16bits acts"
     )
 
+    parser.add_argument(
+        "--gen_val_images", type=str,
+        default='true',
+        help="generate validation images"
+    )
+
 
     parser.add_argument(
         "--accum_batches", action="store_true", 
@@ -406,6 +413,7 @@ def main():
 
     opt.naive_weights_quant = str2bool(opt.naive_weights_quant)
     opt.rev_order = str2bool(opt.rev_order)
+    opt.gen_val_images = str2bool(opt.gen_val_images)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
     p_name = "q-diff-hf1.5"
@@ -613,6 +621,7 @@ def main():
                 torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
                 torch.save(aq_params, os.path.join(outpath, "aq_params.pth"))
                 torch.save(wq_params, os.path.join(outpath, "wq_params.pth"))
+                torch.save(opt, os.path.join(outpath, "opt.pth"))
 
             
 
@@ -630,9 +639,15 @@ def main():
     grid_count=0
     I.save(os.path.join(outpath, f'grid-{grid_count:04}.png'))
     grid_count += 1
-
                     #upload image to wandb
     wandb.log({"grid act and weights": [wandb.Image(I)]})
+    if opt.gen_val_images :
+        I = gen_images(pipe, num_images = 1 if opt.debug else 4,num_inference_steps = opt.ddim_steps, output_image_path = None)
+        I.save(os.path.join(outpath, 'grid-val_images.png'))
+        wandb.log({"grid val images": [wandb.Image(I)]})
+
+
+
 
     logging.info(f"Your samples are ready and waiting for you here: \n{outpath} \n"
           f" \nEnjoy.")

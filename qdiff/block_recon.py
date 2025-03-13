@@ -148,7 +148,7 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
     # cached_inps, cached_outs = save_inp_oup_data(
         # model, block, cali_data, asym, act_quant, batch_size, keep_gpu=False, cond=cond, is_sm=is_sm)
     cached_inps, cached_outs = save_inp_oup_data(
-        model, block, cali_data, asym, act_quant, 8 if not rev else 4, keep_gpu=False, cond=cond, is_sm=is_sm,rev=rev)
+        model, block, cali_data, asym, act_quant, 8 if not rev else 2, keep_gpu=False, cond=cond, is_sm=is_sm,rev=rev)
     if opt_mode != 'mse':
         cached_grads = save_grad_data(model, block, cali_data, act_quant, batch_size=batch_size)
     else:
