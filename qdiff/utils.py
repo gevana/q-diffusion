@@ -397,7 +397,8 @@ def convert_adaround(model):
             convert_adaround(module)
 
 
-def resume_cali_model(qnn, ckpt_path, cali_data, quant_act=False, act_quant_mode='qdiff', cond=False,naive_weights_quant=False):
+def resume_cali_model(qnn, ckpt_path, cali_data, quant_act=False, 
+                      act_quant_mode='qdiff', cond=False,naive_weights_quant=False):
     print("Loading quantized model checkpoint")
     ckpt = torch.load(ckpt_path, map_location='cpu')
     

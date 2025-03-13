@@ -39,6 +39,15 @@ safety_model_id = "CompVis/stable-diffusion-safety-checker"
 safety_feature_extractor = AutoFeatureExtractor.from_pretrained(safety_model_id)
 safety_checker = StableDiffusionSafetyChecker.from_pretrained(safety_model_id)
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(f"Boolean value expected. {v} was passed")
 
 def chunk(it, size):
     it = iter(it)
@@ -287,6 +296,11 @@ def main():
         help="quantization mode to use"
     )
 
+    parser.add_argument(
+        "--naive_weights_quant",type=str, default  = "false",
+        help="naive weight quantization"
+    )
+
     # qdiff specific configs
     parser.add_argument(
         "--cali_st", type=int, default=1, 
@@ -385,9 +399,11 @@ def main():
         ]
     )
 
-    
+    opt.naive_weights_quant = str2bool(opt.naive_weights_quant)
+
+
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-rtn"
+    p_name = "q-diff-hf1.5"
     
     #if opt.ddim_steps != 50:
     #    p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
@@ -407,6 +423,7 @@ def main():
                 "accum_batches": opt.accum_batches,
                 "act_bit": opt.act_bit,
                 "act_quant_mode": opt.quant_mode,
+                "naive_weights_quant": opt.naive_weights_quant,
                 "sm_abit": opt.sm_abit,
                 "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
@@ -445,12 +462,9 @@ def main():
                          'symmetric':opt.symmetric_weight,'debug':opt.debug}
             aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
                          'leaf_param':  opt.quant_act, 'debug':opt.debug,'split_to_16bits':opt.split_to_16bits,'act_quant_mode' :opt.quant_mode}
-            if opt.resume:
-                logger.info('Load with min-max quick initialization')
+            if opt.naive_weights_quant:
                 wq_params['scale_method'] = 'max'
-                aq_params['scale_method'] = 'max'
-            if opt.resume_w:
-                wq_params['scale_method'] = 'max'
+
             qnn = QuantModel(
                 model=model, weight_quant_params=wq_params, act_quant_params=aq_params,
                 act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops, split=opt.split)
@@ -498,21 +512,31 @@ def main():
 
                 
                 if not opt.resume_w:
-                    logger.info("Doing weight calibration")
-                    #recon_model(qnn)
-                    kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
-                            iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
-                            warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
-                            #accum_batches= 4 if opt.accum_batches else 1)
-                            accum_batches = 1)
-                    unetHF_reconstruction(qnn, **kwargs)
-                    logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
-                    add_full_name_to_module(qnn)
-                    for m in qnn.model.modules():
-                        if isinstance(m, AdaRoundQuantizer):
-                            m.zero_point = nn.Parameter(m.zero_point)
-                            m.delta = nn.Parameter(m.delta)
-                    torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
+                    if not opt.naive_weights_quant:
+
+                        logger.info("Doing weight calibration")
+                        #recon_model(qnn)
+                        kwargs = dict(cali_data=cali_data, batch_size=opt.cali_batch_size, 
+                                iters=opt.cali_iters, weight=0.01, asym=True, b_range=(20, 2),
+                                warmup=0.2, act_quant=False, opt_mode='mse', cond=opt.cond,
+                                #accum_batches= 4 if opt.accum_batches else 1)
+                                accum_batches = 1)
+                        unetHF_reconstruction(qnn, **kwargs)
+                        logger.info(f"finished weight Calibration Saving  checkpoint to {outpath}/wc_ckpt.pth")
+                        add_full_name_to_module(qnn)
+                        for m in qnn.model.modules():
+                            if isinstance(m, AdaRoundQuantizer):
+                                m.zero_point = nn.Parameter(m.zero_point)
+                                m.delta = nn.Parameter(m.delta)
+                        torch.save(qnn.state_dict(), os.path.join(outpath, "wc_ckpt.pth"))
+                    else: # naive quant wieghts
+                        logger.info("Naive weight quantization allready done in model init")
+                        add_full_name_to_module(qnn)
+                        for m in qnn.model.modules():
+                            if isinstance(m, UniformAffineQuantizer) and 'weight' in m.full_name:
+                                m.zero_point = nn.Parameter(m.zero_point)
+                                m.delta = nn.Parameter(m.delta)
+
                     qnn.set_quant_state(weight_quant=True, act_quant=False)
                 
                 if False:
