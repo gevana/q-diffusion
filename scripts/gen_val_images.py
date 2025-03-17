@@ -13,11 +13,14 @@ else:
 generator = torch.Generator(device).manual_seed(42)
 
 def gen_images(pipe, num_images = 4,num_inference_steps =20, output_image_path = './validation_images/validation_images.png'):
+    pipe = pipe.to(device)
     I =[]
     for prompt in prompts[:num_images]: 
+        print(prompt)
         Ip = pipe(prompt,num_inference_steps=num_inference_steps,generator= generator).images[0]
         I.append(Ip)
     for prompt in prompts[-num_images:]: 
+        print(prompt)
         Ip = pipe(prompt,num_inference_steps=num_inference_steps,generator= generator).images[0]
         I.append(Ip)
     

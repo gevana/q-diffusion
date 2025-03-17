@@ -89,8 +89,8 @@ def gen_calibseb(ddim_steps=50,num_propts=128,output_folder='.',seed=None):
 if __name__ == '__main__':
     
 
-    gen_calibseb(ddim_steps=50,num_propts=256,
-                 output_folder='/fastdata/users/nadavg/sd/qdiff_hf15_verb/gen_calib',
+    gen_calibseb(ddim_steps=20,num_propts=256,
+                 output_folder='/genai/users/nadavg/sd/qdiff_hf15_verb/gen_calib',
                  seed=42)
 
 

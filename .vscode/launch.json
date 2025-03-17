@@ -5,7 +5,7 @@
                 "name": "gen-calibHF",
                 "type": "debugpy",
                 "request": "launch",
-                "program": "scripts/gen_calibset_HF15.py",
+                "program": "scripts/hf15/gen_calibset_HF15.py",
                 "justMyCode": false,
                 "env": {
                     "CUDA_VISIBLE_DEVICES": "2"
