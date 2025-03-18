@@ -2,6 +2,7 @@ import logging
 from types import MethodType
 import torch as th
 from torch import einsum
+import torch
 import torch.nn as nn
 from einops import rearrange, repeat
 import copy 
@@ -20,6 +21,20 @@ from diffusers.models.resnet import ResnetBlock2D
 
 logger = logging.getLogger(__name__)
 
+class KerenlEwAdd(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.kernel_1 = torch.tensor(1)
+        self.kernel_2 = torch.tensor(1)
+        self.inited = False
+    def forward(self, x, y):
+        if not self.inited:
+            shape_x = x.shape
+            shape_y = y.shape
+            self.kernel_1 = torch.ones(size=(1,shape_x[1],*shape_x[2:])).to(x.device)
+            self.kernel_2 = torch.ones(size=(1,shape_y[1],*shape_y[2:])).to(x.device)
+            self.inited = True
+        return self.kernel_1*x + self.kernel_2*y
 
 class BaseQuantBlock(nn.Module):
     """
@@ -73,6 +88,7 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
         self.out_layers = res.out_layers
 
         self.skip_connection = res.skip_connection
+        
 
     def forward(self, x, emb=None, split=0):
         """לא
@@ -114,16 +130,21 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
         while len(emb_out.shape) < len(h.shape):
             emb_out = emb_out[..., None]
         if self.use_scale_shift_norm:
+            raise AssertionError(f'not implemented {self.use_scale_shift_norm=}')
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
             scale, shift = th.chunk(emb_out, 2, dim=1)
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
-            h = h + emb_out
+            #h = h + emb_out
+            h = self.ew_add_1(h,emb_out)
             h = self.out_layers(h)
         if split != 0:
-            return self.skip_connection(x, split=split) + h
-        return self.skip_connection(x) + h
+            skip_out = self.skip_connection(x, split=split)
+        else:
+            skip_out = self.skip_connection(x)
+        #return skip_out + h
+        return self.ew_add_2(skip_out,h)
 
 class QuantResBlockHF15(QuantResBlock):
     def __init__(self, res: ResnetBlock2D, act_quant_params: dict = {}):
@@ -163,6 +184,8 @@ class QuantResBlockHF15(QuantResBlock):
 
         self.split = 0
         self.kkwargs = 'emb'
+        self.ew_add_1 = KerenlEwAdd()
+        self.ew_add_2 = KerenlEwAdd()
     
     def set_split(self,split):
         self.split = split
@@ -320,6 +343,10 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.attn2.use_act_quant = False
         self.kkwargs = 'encoder_hidden_states'
         
+        self.ew_add_1 = KerenlEwAdd()
+        self.ew_add_2 = KerenlEwAdd()
+        self.ew_add_3 = KerenlEwAdd()
+       
 
     def forward(self, x, encoder_hidden_states=None,**kwargs):
         # print(f"x shape {x.shape} context shape {context.shape}")
@@ -332,9 +359,12 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
             assert(len(x) == 2)
             x, context = x
 
-        x = self.attn1(self.norm1(x)) + x
-        x = self.attn2(self.norm2(x), context=context) + x
-        x = self.ff(self.norm3(x)) + x
+        #x =              self.attn1(self.norm1(x)) + x
+        x = self.ew_add_1(self.attn1(self.norm1(x)) , x)
+        #x =              self.attn2(self.norm2(x), context=context) + x
+        x = self.ew_add_2(self.attn2(self.norm2(x), context=context) , x)
+        #x =              self.ff(self.norm3(x)) + x
+        x = self.ew_add_3(self.ff(self.norm3(x)) , x)
         return x
     
     def set_quant_state(self, weight_quant: bool = False, act_quant: bool = False):
