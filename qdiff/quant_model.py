@@ -1,11 +1,12 @@
 import logging
 import torch.nn as nn
 from qdiff.quant_block import get_specials, BaseQuantBlock
-from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock
+from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock ,TimeStepEmbeddingSilu,QuantResBlockHF15
 from qdiff.quant_block import QuantQKMatMul, QuantSMVMatMul, QuantBasicTransformerBlock, QuantAttnBlock
 from qdiff.quant_layer import QuantModule, StraightThrough, QuantOp
 #from ldm.modules.attention import BasicTransformerBlock
 from diffusers.models.attention import BasicTransformerBlock
+from diffusers.models.embeddings import TimestepEmbedding
 from ldm.modules.diffusionmodules.util import GroupNorm32
 from src.utils.torch_utils import add_full_name_to_module
 
@@ -19,18 +20,21 @@ class QuantModel(nn.Module):
         self.model = model
         self.sm_abit = kwargs.get('sm_abit', 8)
         self.quant_act_ops = kwargs.get('quant_act_ops', False)
+        self.use_post_act_temb = kwargs.get('use_post_act_temb', False)
         self.in_channels = model.in_channels
+        add_full_name_to_module(self.model)
         if hasattr(model, 'image_size'):
             self.image_size = model.image_size
         self.specials = get_specials(act_quant_params['leaf_param'])
         self.refacor_group_norm(self.model)
+        self.refactor_time_embedding(self.model)
         self.quant_module_refactor(self.model, weight_quant_params, act_quant_params)
         self.quant_block_refactor(self.model, weight_quant_params, act_quant_params)
         add_full_name_to_module(self.model)
         self.split = kwargs.get('split', False)
         if self.split:
             self.add_spliter()
-            add_full_name_to_module(self.model)
+        add_full_name_to_module(self.model)
 
     def add_spliter(self):
         #up_blocks[0]
@@ -50,6 +54,12 @@ class QuantModel(nn.Module):
         self.model.up_blocks[3].resnets[1].set_split(320)
         self.model.up_blocks[3].resnets[2].set_split(320)
         
+
+    def refactor_time_embedding(self,model: nn.Module):
+        model.time_embedding = TimeStepEmbeddingSilu(
+                                model.time_embedding,
+                                use_post_act=self.use_post_act_temb)
+
 
     def refacor_group_norm(self, module: nn.Module):
         for name, child_module in module.named_children():
@@ -72,6 +82,8 @@ class QuantModel(nn.Module):
                     child_module, weight_quant_params, act_quant_params))
                 prev_quantmodule = getattr(module, name)
             elif self.quant_act_ops and isinstance(child_module,(nn.SiLU,GroupNorm32)):
+                if self.use_post_act_temb and  isinstance(module, TimeStepEmbeddingSilu):
+                    continue
                 setattr(module, name, QuantOp(
                     child_module, act_quant_params))
 
@@ -93,6 +105,9 @@ class QuantModel(nn.Module):
                 elif self.specials[type(child_module)] == QuantQKMatMul:
                     setattr(module, name, self.specials[type(child_module)](
                         act_quant_params))
+                elif self.specials[type(child_module)] == QuantResBlockHF15:
+                    setattr(module, name, self.specials[type(child_module)](child_module,
+                        act_quant_params, skip_time_act=self.use_post_act_temb))
                 else:
                     setattr(module, name, self.specials[type(child_module)](child_module, 
                         act_quant_params))

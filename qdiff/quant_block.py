@@ -13,6 +13,7 @@ from ldm.modules.diffusionmodules.openaimodel import AttentionBlock, ResBlock, T
 from ldm.modules.diffusionmodules.openaimodel import QKMatMul, SMVMatMul
 #from ldm.modules.attention import BasicTransformerBlock
 from diffusers.models.attention import BasicTransformerBlock
+from diffusers.models.embeddings import TimestepEmbedding
 from ldm.modules.attention import exists, default
 
 from ddim.models.diffusion import ResnetBlock, AttnBlock, nonlinearity
@@ -24,17 +25,38 @@ logger = logging.getLogger(__name__)
 class KerenlEwAdd(nn.Module):
     def __init__(self):
         super().__init__()
-        self.kernel_1 = torch.tensor(1)
-        self.kernel_2 = torch.tensor(1)
+        self.kernel_1 = torch.tensor(1,dtype=torch.float32)
+        self.kernel_2 = torch.tensor(1,dtype=torch.float32)
         self.inited = False
     def forward(self, x, y):
         if not self.inited:
             shape_x = x.shape
             shape_y = y.shape
-            self.kernel_1 = torch.ones(size=(1,shape_x[1],*shape_x[2:])).to(x.device)
-            self.kernel_2 = torch.ones(size=(1,shape_y[1],*shape_y[2:])).to(x.device)
+            shape_kernel_1 = (1,shape_x[1]) + (1,)*(len(shape_x)-2)
+            shape_kernel_2 = (1,shape_y[1]) + (1,)*(len(shape_y)-2)
+
+            self.kernel_1 = torch.ones(size=shape_kernel_1,dtype=torch.float32).to(x.device)
+            self.kernel_2 = torch.ones(size=shape_kernel_2,dtype=torch.float32).to(x.device)
             self.inited = True
         return self.kernel_1*x + self.kernel_2*y
+
+class TimeStepEmbeddingSilu(nn.Module):
+    def __init__(self, temb: TimestepEmbedding,use_post_act=False):
+        super().__init__()
+        #self.tembs = temb
+        self.linear_1 = temb.linear_1
+        self.act = nn.SiLU()
+        self.linear_2 = temb.linear_2
+        self.use_post_act = use_post_act
+    def forward(self, x,timestep_cond=None):
+        if timestep_cond is not None:
+            raise AssertionError(f'not implemented {timestep_cond=}')
+        x = self.act(self.linear_1(x))
+        x = self.linear_2(x)
+        if self.use_post_act:
+            x = self.act(x)
+        return x
+
 
 class BaseQuantBlock(nn.Module):
     """
@@ -147,7 +169,7 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
         return self.ew_add_2(skip_out,h)
 
 class QuantResBlockHF15(QuantResBlock):
-    def __init__(self, res: ResnetBlock2D, act_quant_params: dict = {}):
+    def __init__(self, res: ResnetBlock2D, act_quant_params: dict = {},skip_time_act=False):
         #BaseQuantBlock.__init__(self,act_quant_params)
         super().__init__(res,act_quant_params ={} ,skip_init = True)
         self.channels = res.in_channels
@@ -169,7 +191,7 @@ class QuantResBlockHF15(QuantResBlock):
         self.h_upd = None #res.h_upd
         self.x_upd = None #res.x_upd
 
-        self.skip_time_act = res.skip_time_act
+        self.skip_time_act = res.skip_time_act or skip_time_act
         if self.skip_time_act:
             self.emb_layers = res.time_emb_proj
         else:
