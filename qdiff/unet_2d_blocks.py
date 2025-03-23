@@ -30,6 +30,8 @@ from diffusers.models.unets.unet_2d_blocks import (
     UpBlock2D,
 )
 
+from qdiff.quant_block import KerenlEwAdd
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -93,7 +95,7 @@ def CrossAttnDownBlock2D_forward(
         if i == len(blocks) - 1 and additional_residuals is not None:
             ew_att = f'ew_add_{i}'
             if getattr(self,ew_att,None) is None:
-                setattr(self,ew_att,hailo_ew_add())
+                setattr(self,ew_att,KerenlEwAdd())
             hidden_states = getattr(self,ew_att)(hidden_states , additional_residuals)
             #hidden_states = hidden_states + additional_residuals
 
@@ -109,9 +111,6 @@ def CrossAttnDownBlock2D_forward(
 
     return hidden_states, output_states
 
-
-
-    
 
 def CrossAttnUpBlock2D_forward(
     self,
@@ -198,8 +197,7 @@ def CrossAttnUpBlock2D_forward(
     return hidden_states
 
 
-
-    
+ 
 
 def DownBlock2D_forward(
     self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, *args, **kwargs
@@ -305,8 +303,6 @@ def UpBlock2D_forward(
             hidden_states = upsampler(hidden_states, upsample_size)
 
     return hidden_states
-
-
 
 
     
