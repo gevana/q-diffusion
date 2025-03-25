@@ -2,13 +2,15 @@ import logging
 import torch.nn as nn
 from qdiff.quant_block import get_specials, BaseQuantBlock
 from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock ,TimeStepEmbeddingSilu,QuantResBlockHF15
-from qdiff.quant_block import QuantQKMatMul, QuantSMVMatMul, QuantBasicTransformerBlock, QuantAttnBlock
+from qdiff.quant_block import QuantQKMatMul, QuantSMVMatMul, QuantBasicTransformerBlock, QuantAttnBlock,KerenlEwAdd
 from qdiff.quant_layer import QuantModule, StraightThrough, QuantOp
 #from ldm.modules.attention import BasicTransformerBlock
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.embeddings import TimestepEmbedding
 from ldm.modules.diffusionmodules.util import GroupNorm32
 from src.utils.torch_utils import add_full_name_to_module
+from diffusers.models.transformers.transformer_2d import Transformer2DModel
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +27,10 @@ class QuantModel(nn.Module):
         add_full_name_to_module(self.model)
         if hasattr(model, 'image_size'):
             self.image_size = model.image_size
-        self.specials = get_specials(act_quant_params['leaf_param'])
+        self.specials = get_specials()#act_quant_params['leaf_param'])
         self.refacor_group_norm(self.model)
         self.refactor_time_embedding(self.model)
+        self.refactor_Transformer2DModel(self.model)
         self.quant_module_refactor(self.model, weight_quant_params, act_quant_params)
         self.quant_block_refactor(self.model, weight_quant_params, act_quant_params)
         add_full_name_to_module(self.model)
@@ -35,6 +38,14 @@ class QuantModel(nn.Module):
         if self.split:
             self.add_spliter()
         add_full_name_to_module(self.model)
+
+    def refactor_Transformer2DModel(self,model):
+        for module in self.modules():
+            if isinstance(module, Transformer2DModel):
+                #print(module.full_name)
+                module.ew_add_1 = KerenlEwAdd(in1_name='hidden_states',in2_name='residual')
+                module._get_output_for_continuous_inputs = _get_output_for_continuous_inputs_ew_add
+
 
     def add_spliter(self):
         #up_blocks[0]
@@ -149,3 +160,21 @@ class QuantModel(nn.Module):
                 # logger.info(name)
                 # m.use_checkpoint = grad_ckpt
 
+
+
+
+
+def _get_output_for_continuous_inputs_ew_add(self, hidden_states, residual, batch_size, height, width, inner_dim):
+    if not self.use_linear_projection:
+        hidden_states = (
+            hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
+        )
+        hidden_states = self.proj_out(hidden_states)
+    else:
+        hidden_states = self.proj_out(hidden_states)
+        hidden_states = (
+            hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
+        )
+
+    output = self.ew_add_1(hidden_states , residual)
+    return output

@@ -23,10 +23,12 @@ from diffusers.models.resnet import ResnetBlock2D
 logger = logging.getLogger(__name__)
 
 class KerenlEwAdd(nn.Module):
-    def __init__(self):
+    def __init__(self,in1_name=None,in2_name=None):
         super().__init__()
         self.kernel_1 = torch.tensor(1,dtype=torch.float32)
         self.kernel_2 = torch.tensor(1,dtype=torch.float32)
+        self.in1_name = in1_name
+        self.in2_name = in2_name
         self.inited = False
     def forward(self, x, y):
         if not self.inited:
@@ -206,8 +208,8 @@ class QuantResBlockHF15(QuantResBlock):
 
         self.split = 0
         self.kkwargs = 'emb'
-        self.ew_add_1 = KerenlEwAdd()
-        self.ew_add_2 = KerenlEwAdd()
+        self.ew_add_1 = KerenlEwAdd(in1_name='h',in2_name='emb')
+        self.ew_add_2 = KerenlEwAdd(in1_name='skip',in2_name='h')
     
     def set_split(self,split):
         self.split = split
@@ -365,9 +367,9 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.attn2.use_act_quant = False
         self.kkwargs = 'encoder_hidden_states'
         
-        self.ew_add_1 = KerenlEwAdd()
-        self.ew_add_2 = KerenlEwAdd()
-        self.ew_add_3 = KerenlEwAdd()
+        self.ew_add_1 = KerenlEwAdd(in1_name='attn1',in2_name='x')
+        self.ew_add_2 = KerenlEwAdd(in1_name='attn2',in2_name='x')
+        self.ew_add_3 = KerenlEwAdd(in1_name='ff',in2_name='x')
        
 
     def forward(self, x, encoder_hidden_states=None,**kwargs):

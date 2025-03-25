@@ -257,7 +257,7 @@ class QuantModule(nn.Module):
         # de-activate the quantized forward default
         self.use_weight_quant = False
         self.use_act_quant = False
-        self.act_quant_mode = act_quant_params['act_quant_mode']
+        self.act_quant_mode = act_quant_params.get('act_quant_mode', 'qdiff')
         self.disable_act_quant = disable_act_quant
         # initialize quantizer
         self.weight_quantizer = UniformAffineQuantizer(**self.weight_quant_params)
