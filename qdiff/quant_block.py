@@ -23,20 +23,26 @@ from diffusers.models.resnet import ResnetBlock2D
 logger = logging.getLogger(__name__)
 
 class KerenlEwAdd(nn.Module):
-    def __init__(self,in1_name=None,in2_name=None):
+    def __init__(self,in1_name=None,in2_name=None,channels_dim=1):
         super().__init__()
         self.kernel_1 = torch.tensor(1,dtype=torch.float32)
         self.kernel_2 = torch.tensor(1,dtype=torch.float32)
         self.in1_name = in1_name
         self.in2_name = in2_name
+        self.channels_dim = channels_dim
         self.inited = False
     def forward(self, x, y):
         if not self.inited:
             shape_x = x.shape
             shape_y = y.shape
-            shape_kernel_1 = (1,shape_x[1]) + (1,)*(len(shape_x)-2)
-            shape_kernel_2 = (1,shape_y[1]) + (1,)*(len(shape_y)-2)
-
+            if self.channels_dim == 1:
+                shape_kernel_1 = (1,shape_x[1]) + (1,)*(len(shape_x)-2)
+                shape_kernel_2 = (1,shape_y[1]) + (1,)*(len(shape_y)-2)
+            elif self.channels_dim == -1:
+                shape_kernel_1 = (1,)*(len(shape_x)-1) + (shape_x[-1],)
+                shape_kernel_2 = (1,)*(len(shape_y)-1) + (shape_y[-1],) 
+            else:
+                raise AssertionError(f'not implemented {self.channels_dim=}')
             self.kernel_1 = torch.ones(size=shape_kernel_1,dtype=torch.float32).to(x.device)
             self.kernel_2 = torch.ones(size=shape_kernel_2,dtype=torch.float32).to(x.device)
             self.inited = True
@@ -367,9 +373,9 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.attn2.use_act_quant = False
         self.kkwargs = 'encoder_hidden_states'
         
-        self.ew_add_1 = KerenlEwAdd(in1_name='attn1',in2_name='x')
-        self.ew_add_2 = KerenlEwAdd(in1_name='attn2',in2_name='x')
-        self.ew_add_3 = KerenlEwAdd(in1_name='ff',in2_name='x')
+        self.ew_add_1 = KerenlEwAdd(in1_name='attn1',in2_name='x',channels_dim=-1)
+        self.ew_add_2 = KerenlEwAdd(in1_name='attn2',in2_name='x',channels_dim=-1)
+        self.ew_add_3 = KerenlEwAdd(in1_name='ff',in2_name='x',channels_dim=-1)
        
 
     def forward(self, x, encoder_hidden_states=None,**kwargs):

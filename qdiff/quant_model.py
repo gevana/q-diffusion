@@ -1,4 +1,5 @@
 import logging
+from types import MethodType
 import torch.nn as nn
 from qdiff.quant_block import get_specials, BaseQuantBlock
 from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock ,TimeStepEmbeddingSilu,QuantResBlockHF15
@@ -44,7 +45,7 @@ class QuantModel(nn.Module):
             if isinstance(module, Transformer2DModel):
                 #print(module.full_name)
                 module.ew_add_1 = KerenlEwAdd(in1_name='hidden_states',in2_name='residual')
-                module._get_output_for_continuous_inputs = _get_output_for_continuous_inputs_ew_add
+                module._get_output_for_continuous_inputs = MethodType(_get_output_for_continuous_inputs_ew_add, module)
 
 
     def add_spliter(self):
