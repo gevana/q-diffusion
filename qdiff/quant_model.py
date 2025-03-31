@@ -1,6 +1,7 @@
 import logging
 from types import MethodType
 import torch.nn as nn
+import torch
 from qdiff.quant_block import get_specials, BaseQuantBlock
 from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock ,TimeStepEmbeddingSilu,QuantResBlockHF15
 from qdiff.quant_block import QuantQKMatMul, QuantSMVMatMul, QuantBasicTransformerBlock, QuantAttnBlock,KerenlEwAdd
@@ -11,6 +12,16 @@ from diffusers.models.embeddings import TimestepEmbedding
 from ldm.modules.diffusionmodules.util import GroupNorm32
 from src.utils.torch_utils import add_full_name_to_module
 from diffusers.models.transformers.transformer_2d import Transformer2DModel
+from scripts.hf15.init_pipe import init_pipe
+
+from mo_utils.utils.stand_alone_utils.har_utils import get_har_files,get_params_from_har
+from mo_utils.utils.stand_alone_utils.pytorch2accelras import (
+    get_nested_attr,
+    get_weight_and_bias_from_layer_name,
+    acc_ker_to_pytorch_weight,
+    UpdateUnet,
+    )
+from mo_utils.utils.stand_alone_utils.quant_utils import calc_snr,calc_stats
 
 
 logger = logging.getLogger(__name__)
@@ -166,6 +177,7 @@ class QuantModel(nn.Module):
 
 
 def _get_output_for_continuous_inputs_ew_add(self, hidden_states, residual, batch_size, height, width, inner_dim):
+    
     if not self.use_linear_projection:
         hidden_states = (
             hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
@@ -179,3 +191,35 @@ def _get_output_for_continuous_inputs_ew_add(self, hidden_states, residual, batc
 
     output = self.ew_add_1(hidden_states , residual)
     return output
+
+def init_qnn_from_fp_model(har_path,weight_quant_params: dict = {}, act_quant_params: dict = {}, 
+                            input_batch=None,debug=False,**kwargs) -> QuantModel:
+    
+    if input_batch is None:
+        input_batch = [torch.randn((1, 4, 64, 64)),torch.randn(1),torch.randn((1,77,768))]
+
+    
+    params = get_params_from_har(har_path,params_name='unet_sim.fpo.npz',verb=False)
+    hn = get_params_from_har(har_path,params_name='unet_sim.hn',verb=False)
+    pipe = init_pipe()
+    unet = pipe.unet
+    add_full_name_to_module(unet)
+    out_org = unet(*input_batch)
+
+
+    uu= UpdateUnet(unet, hn,params,debug=debug)
+    uu.update_unet_convs()
+    qnn = QuantModel(model=unet, 
+                     weight_quant_params=weight_quant_params,
+                    act_quant_params=act_quant_params,**kwargs)
+
+    out_reorg_qnn_temp = qnn.model(*input_batch)
+
+    uu= UpdateUnet(qnn.model, hn,params)
+    uu.update_unet_ew_adds()
+    out_reorg_qnn = qnn.model(*input_batch)
+
+    snr = calc_snr(out_org[0],out_reorg_qnn[0])
+    print (f"SNR of acceleras fp model : {snr} [db]")
+    return qnn , pipe
+
