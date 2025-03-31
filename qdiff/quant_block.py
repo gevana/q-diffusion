@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 class KerenlEwAdd(nn.Module):
     def __init__(self,in1_name=None,in2_name=None,channels_dim=1):
         super().__init__()
+        self.register_buffer('kernel_1',torch.tensor(1,dtype=torch.float32))
+        self.register_buffer('kernel_2',torch.tensor(1,dtype=torch.float32))
         self.kernel_1 = torch.tensor(1,dtype=torch.float32)
         self.kernel_2 = torch.tensor(1,dtype=torch.float32)
         self.in1_name = in1_name
@@ -43,10 +45,28 @@ class KerenlEwAdd(nn.Module):
                 shape_kernel_2 = (1,)*(len(shape_y)-1) + (shape_y[-1],) 
             else:
                 raise AssertionError(f'not implemented {self.channels_dim=}')
-            self.kernel_1 = torch.ones(size=shape_kernel_1,dtype=torch.float32).to(x.device)
-            self.kernel_2 = torch.ones(size=shape_kernel_2,dtype=torch.float32).to(x.device)
-            self.inited = True
+            
+            #self.register_buffer('kernel_1',torch.ones(size=shape_kernel_1,dtype=torch.float32).to(x.device))
+            #self.register_buffer('kernel_2',torch.ones(size=shape_kernel_2,dtype=torch.float32).to(x.device))
+            #self.kernel_2 = torch.ones(size=shape_kernel_2,dtype=torch.float32).to(x.device)
+            #self.inited = True
+            self.update_kernels(torch.ones(size=shape_kernel_1,dtype=torch.float32),
+                                torch.ones(size=shape_kernel_2,dtype=torch.float32),
+                                x.device)
+
         return self.kernel_1*x + self.kernel_2*y
+    
+    def update_kernels(self,kernel_1,kernel_2,device = 'cpu'):
+        if not isinstance(kernel_1,torch.Tensor):
+            kernel_1 = torch.tensor(kernel_1,dtype=torch.float32)
+        if not isinstance(kernel_2,torch.Tensor):
+            kernel_2 = torch.tensor(kernel_2,dtype=torch.float32)
+        if self.inited:
+            kernel_1 = kernel_1.reshape(self.kernel_1.shape)
+            kernel_2 = kernel_2.reshape(self.kernel_2.shape)
+        self.register_buffer('kernel_1',kernel_1.to(device))
+        self.register_buffer('kernel_2',kernel_2.to(device))
+        self.inited = True
 
 class TimeStepEmbeddingSilu(nn.Module):
     def __init__(self, temb: TimestepEmbedding,use_post_act=False):
