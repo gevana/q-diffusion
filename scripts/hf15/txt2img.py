@@ -425,7 +425,10 @@ def main():
     opt.gen_val_images = str2bool(opt.gen_val_images)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_verb"
+    p_name = "q-diff-hf1.5_verc"
+
+    if opt.fp_model_path:
+        p_name = p_name + "-ffp"
     
     #if opt.ddim_steps != 50:
     #    p_name = p_name + f'ddim_steps-{opt.ddim_steps}'
@@ -476,9 +479,7 @@ def main():
     
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    model = model.to(device)
 
-  
     assert(opt.cond)
    
     
