@@ -193,7 +193,7 @@ def _get_output_for_continuous_inputs_ew_add(self, hidden_states, residual, batc
     return output
 
 def init_qnn_from_fp_model(har_path,weight_quant_params: dict = {}, act_quant_params: dict = {}, 
-                            input_batch=None,debug=False,**kwargs) -> QuantModel:
+                            input_batch=None,scheduler='ddim',debug=False,**kwargs) -> QuantModel:
     
     if input_batch is None:
         input_batch = [torch.randn((1, 4, 64, 64)),torch.randn(1),torch.randn((1,77,768))]
@@ -201,7 +201,7 @@ def init_qnn_from_fp_model(har_path,weight_quant_params: dict = {}, act_quant_pa
     
     params = get_params_from_har(har_path,params_name='unet_sim.fpo.npz',verb=False)
     hn = get_params_from_har(har_path,params_name='unet_sim.hn',verb=False)
-    pipe = init_pipe()
+    pipe = init_pipe(scheduler=scheduler)
     unet = pipe.unet
     add_full_name_to_module(unet)
     out_org = unet(*input_batch)

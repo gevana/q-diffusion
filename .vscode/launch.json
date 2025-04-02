@@ -37,7 +37,7 @@
                         "--quant_mode", "rtn",
                         "--naive_weights_quant", "true",
                         "--rev_order", "false",
-                        "--fp_model_path","",//"/genai/users/ellaf/stable_diffusion/unet/shared_unet_demo/quantize_params_10_03/unet_sim_eq.har",
+                        "--fp_model_path","/genai/users/ellaf/stable_diffusion/unet/shared_unet_demo/quantize_params_10_03/unet_sim_eq.har",
                         //"--resume_w", 
                         //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-02-11-11-54-51/wc_ckpt.pth",
                         //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/8bit_sym/wc_ckpt.pth",
@@ -45,7 +45,7 @@
                         "--debug"
                         ],
                 "env": {
-                    "CUDA_VISIBLE_DEVICES": "2"
+                    "CUDA_VISIBLE_DEVICES": "1"
                 }
             },
             {

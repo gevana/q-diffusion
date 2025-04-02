@@ -425,7 +425,7 @@ def main():
     opt.gen_val_images = str2bool(opt.gen_val_images)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_verc"
+    p_name = "q-diff-hf1.5_verd"
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
@@ -490,12 +490,11 @@ def main():
     if opt.naive_weights_quant:
         wq_params['scale_method'] = 'max'
     
-    pipe = init_pipe()
-    model = pipe.unet
+    
     if opt.fp_model_path:
         logger.info(f"Loading model from {opt.fp_model_path}")
         assert Path(opt.fp_model_path).exists()
-        qnn,pipe = init_qnn_from_fp_model(opt.fp_model_path, weight_quant_params=wq_params, act_quant_params=aq_params,
+        qnn,pipe = init_qnn_from_fp_model(opt.fp_model_path, weight_quant_params=wq_params, act_quant_params=aq_params,scheduler = 'euler',
                                           act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops, split=opt.split)
     else:
         logger.info(f"Loading model from original model")
@@ -665,7 +664,8 @@ def main():
                     #upload image to wandb
     wandb.log({"grid act and weights": [wandb.Image(I)]})
     if opt.gen_val_images :
-        I = gen_images(pipe, num_images = 1 if opt.debug else 4,num_inference_steps = opt.ddim_steps, output_image_path = None)
+        I = gen_images(pipe, num_images = 4 if opt.debug else 16,num_inference_steps = opt.ddim_steps,
+                        output_image_path = None,negative_prompt='dafualt')
         I.save(os.path.join(outpath, 'grid-val_images.png'))
         wandb.log({"grid val images": [wandb.Image(I)]})
 
