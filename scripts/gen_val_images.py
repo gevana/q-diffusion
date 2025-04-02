@@ -7,6 +7,7 @@ from PIL import Image
 from pathlib import Path
 from mo_utils.utils.image_utils import stack_images
 from mo_utils.utils.image_utils import gen_stacked_image
+import numpy as np
 
 prompts = pd.read_parquet('scripts/eval.parquet')['Prompt']
 
@@ -40,7 +41,9 @@ def gen_images(pipe, num_images = 4,num_inference_steps =20,
             Ip = pipe(prompt,num_inference_steps=num_inference_steps,generator= generator,negative_prompt=negative_prompt).images[0]
             I.append(Ip)
     
+    I= [np.array(Ip) for Ip in I]
     out_image = gen_stacked_image(I)
+    out_image = Image.fromarray(out_image)
     
     # upper_row = Image.new('RGB',(I[0].width*num_images,I[0].height))
     # lower_row = Image.new('RGB',(I[0].width*num_images,I[0].height))
