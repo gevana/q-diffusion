@@ -39,10 +39,10 @@ def save_input_hook(module, input, output):
     #print(f"Saving input # {len(module.saved_inputs)}")
     module.saved_inputs.append(input)  # Append inputs to the model itself
 
-def get_calib_dict_from_prompt(pipe,ddim_steps,prompt,seed=None):
+def get_calib_dict_from_prompt(pipe,ddim_steps,prompt,seed=None,negative_prompt=None):
  
     pipe.unet.saved_inputs =[]
-    _ = pipe(prompt,num_inference_steps=ddim_steps)
+    _ = pipe(prompt,num_inference_steps=ddim_steps,negative_prompt=negative_prompt)
     saved_inputs = pipe.unet.saved_inputs
     assert len(saved_inputs) == ddim_steps
 
@@ -54,7 +54,7 @@ def gen_calibseb(ddim_steps=50,num_propts=128,output_folder='.',seed=None):
 
     #pipe = StableDiffusionPipeline.from_pretrained("SG161222/Realistic_Vision_V4.0_noVAE")
     
-    pipe = init_pipe()
+    pipe = init_pipe(scheduler='euler')
     
     device = torch.device("cuda")
     pipe = pipe.to(device)
@@ -64,14 +64,16 @@ def gen_calibseb(ddim_steps=50,num_propts=128,output_folder='.',seed=None):
     handle = unet.register_forward_hook(save_input_hook)
 
     prompts = pd.read_parquet('scripts/eval.parquet')['Prompt']
-
+    negative_prompt = ("ugly, tiling, poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame,"
+        "extra limbs, disfigured, deformed, body out of frame, bad anatomy, watermark, signature,"
+        "cut off, low contrast, underexposed, overexposed, bad art, beginner, amateur, distorted face")                  
    
 
     for i,prompt in enumerate(prompts):
         if i >= num_propts:
             break
         print(f"\n\n ############ Prompt #: {i} ##################")
-        inputs_dict = get_calib_dict_from_prompt(pipe,ddim_steps,prompt,seed=None)
+        inputs_dict = get_calib_dict_from_prompt(pipe,ddim_steps,prompt,seed=None,negative_prompt=negative_prompt)
         if 'calib_dict' not in locals():
             calib_dict = inputs_dict
         else:
@@ -89,8 +91,8 @@ def gen_calibseb(ddim_steps=50,num_propts=128,output_folder='.',seed=None):
 if __name__ == '__main__':
     
 
-    gen_calibseb(ddim_steps=20,num_propts=256,
-                 output_folder='/genai/users/nadavg/sd/qdiff_hf15_verb/gen_calib',
+    gen_calibseb(ddim_steps=50,num_propts=256,
+                 output_folder='/genai/users/nadavg/sd/qdiff_hf15_verd/gen_calib',
                  seed=42)
 
 
