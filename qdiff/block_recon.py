@@ -134,7 +134,8 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
                 if module.act_quantizer is not None and module.act_quantizer.delta is not None:
                     opt_params += [module.act_quantizer.delta]
                     act_to_optimize.append(module.act_quantizer)
-                if module.split_act != 0 and module.act_quantizer_0.delta is not None:
+                if (module.split_act != 0 and module.disable_act_quant is False
+                    and module.act_quantizer_0.delta is not None):
                     opt_params += [module.act_quantizer_0.delta]
                     act_to_optimize.append(module.act_quantizer_0)
 

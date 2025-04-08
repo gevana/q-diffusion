@@ -16,7 +16,7 @@
                 "type": "debugpy",
                 "request": "launch",
                 "program": "scripts/hf15/txt2img.py",
-                "justMyCode": false,
+                "justMyCode": true,
                 "console": "integratedTerminal",
                 "args": [
                         "--prompt", "a photograph of an astronaut riding a horse", "--plms", "--cond", "--ptq",

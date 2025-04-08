@@ -260,7 +260,9 @@ class QuantResBlockHF15(QuantResBlock):
         self.split = split
         if isinstance(self.skip_connection,QuantModule):
             self.skip_connection.set_split(split)
-        if isinstance(self.in_layers[0],QuantOp):
+        if self.act_op_skip_ln is not None:
+            self.act_op_skip_ln.set_split(split)
+        elif isinstance(self.in_layers[0],QuantOp):
             self.in_layers[0].set_split(split)    
 
 
