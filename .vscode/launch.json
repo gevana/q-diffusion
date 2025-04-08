@@ -38,6 +38,7 @@
                         "--naive_weights_quant", "true",
                         "--rev_order", "false",
                         "--unite_kvq_act","true",
+                        "--unite_skip_ln","true",
                         "--fp_model_path","/genai/users/ellaf/stable_diffusion/unet/shared_unet_demo/quantize_params_10_03/unet_sim_eq.har",
                         //"--resume_w", 
                         //"--cali_ckpt", "/home/nadavg/q-diffusion/output_quantization/2025-02-11-11-54-51/wc_ckpt.pth",
@@ -46,7 +47,7 @@
                         "--debug"
                         ],
                 "env": {
-                    "CUDA_VISIBLE_DEVICES": "4"
+                    "CUDA_VISIBLE_DEVICES": "0"
                 }
             },
             {

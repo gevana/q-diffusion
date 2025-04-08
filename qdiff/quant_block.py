@@ -201,7 +201,7 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
 
 class QuantResBlockHF15(QuantResBlock):
     def __init__(self, res: ResnetBlock2D, act_quant_params: dict = {},skip_time_act=False,
-                 unite_act_shortcut_ln=False):
+                 unite_skip_ln=False):
         #BaseQuantBlock.__init__(self,act_quant_params)
         super().__init__(res,act_quant_params ={} ,skip_init = True)
         self.channels = res.in_channels
@@ -209,7 +209,7 @@ class QuantResBlockHF15(QuantResBlock):
         
         self.dropout = res.dropout
         self.out_channels = res.out_channels
-        self.unite_act_shortcut_ln = unite_act_shortcut_ln
+        self.unite_skip_ln = unite_skip_ln
         
         #self.use_conv = res.use_conv
         
@@ -237,7 +237,7 @@ class QuantResBlockHF15(QuantResBlock):
         self.act_op_skip_ln = None
         if res.use_in_shortcut:
             self.skip_connection = res.conv_shortcut
-            if self.unite_act_shortcut_ln:
+            if self.unite_skip_ln:
                 self.unite_act_quantizers()
         else:
             self.skip_connection = nn.Identity()

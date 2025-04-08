@@ -36,6 +36,7 @@ class QuantModel(nn.Module):
         self.quant_act_ops = kwargs.get('quant_act_ops', False)
         self.use_post_act_temb = kwargs.get('use_post_act_temb', False)
         self.unite_kvq_act = kwargs.get('unite_kvq_act', False)
+        self.unite_skip_ln = kwargs.get('unite_skip_ln', False)
         self.in_channels = model.in_channels
         add_full_name_to_module(self.model)
         if hasattr(model, 'image_size'):
@@ -131,7 +132,7 @@ class QuantModel(nn.Module):
                         act_quant_params))
                 elif self.specials[type(child_module)] == QuantResBlockHF15:
                     setattr(module, name, self.specials[type(child_module)](child_module,
-                        act_quant_params, skip_time_act=self.use_post_act_temb))
+                        act_quant_params, skip_time_act=self.use_post_act_temb,unite_skip_ln=self.unite_skip_ln))
                 else:
                     setattr(module, name, self.specials[type(child_module)](child_module, 
                         act_quant_params))

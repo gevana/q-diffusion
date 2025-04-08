@@ -8,7 +8,7 @@ from tqdm import tqdm, trange
 #from imwatermark import WatermarkEncoder
 from itertools import islice
 from einops import rearrange
-from torchvision.utils import make_grid
+#from torchvision.utils import make_grid
 import time
 from pytorch_lightning import seed_everything
 import torch
@@ -326,6 +326,10 @@ def main():
         "--unite_kvq_act",type=str,default = "false",
         help ="unite_kvq_act"
     )
+    parser.add_argument(
+        "--unite_skip_ln",type=str,default = "false",
+        help ="unite_skip_ln"
+    )
     # qdiff specific configs
     parser.add_argument(
         "--cali_st", type=int, default=1, 
@@ -428,6 +432,7 @@ def main():
     opt.rev_order = str2bool(opt.rev_order)
     opt.gen_val_images = str2bool(opt.gen_val_images)
     opt.unite_kvq_act = str2bool(opt.unite_kvq_act)
+    opt.unite_skip_ln = str2bool(opt.unite_skip_ln)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
     p_name = "q-diff-hf1.5_vere"
@@ -456,6 +461,7 @@ def main():
                 "naive_weights_quant": opt.naive_weights_quant,
                 "rev_order": opt.rev_order,
                 "unite_kvq_act": opt.unite_kvq_act,
+                "unite_skip_ln": opt.unite_skip_ln,
                 "sm_abit": opt.sm_abit,
                 "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
@@ -502,7 +508,7 @@ def main():
         assert Path(opt.fp_model_path).exists()
         qnn,pipe = init_qnn_from_fp_model(opt.fp_model_path, weight_quant_params=wq_params, act_quant_params=aq_params,scheduler = 'euler',
                                           act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops, split=opt.split,
-                                          unite_kvq_act = opt.unite_kvq_act)
+                                          unite_kvq_act = opt.unite_kvq_act,unite_skip_ln= opt.unite_skip_ln)
     else:
         logger.info(f"Loading model from original model")
         pipe = init_pipe()
