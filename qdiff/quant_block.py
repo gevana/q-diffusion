@@ -141,7 +141,7 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
         
 
     def forward(self, x, emb=None, split=0):
-        """לא
+        """
         Apply the block to a Tensor, conditioned on a timestep embedding.
         :param x: an [N x C x ...] Tensor of features.
         :param emb: an [N x emb_channels] Tensor of timestep embeddings.
@@ -162,6 +162,9 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
             assert(len(x) == 2)
             x, emb = x
         assert x.shape[2] == x.shape[3]
+
+        if self.act_op_skip_ln is not None:
+            x = self.act_op_skip_ln(x,split)
 
         if self.updown:
             in_rest, in_conv = self.in_layers[:-1], self.in_layers[-1]
@@ -197,7 +200,8 @@ class QuantResBlock(BaseQuantBlock, TimestepBlock):
         return self.ew_add_2(skip_out,h)
 
 class QuantResBlockHF15(QuantResBlock):
-    def __init__(self, res: ResnetBlock2D, act_quant_params: dict = {},skip_time_act=False):
+    def __init__(self, res: ResnetBlock2D, act_quant_params: dict = {},skip_time_act=False,
+                 unite_act_shortcut_ln=False):
         #BaseQuantBlock.__init__(self,act_quant_params)
         super().__init__(res,act_quant_params ={} ,skip_init = True)
         self.channels = res.in_channels
@@ -205,6 +209,7 @@ class QuantResBlockHF15(QuantResBlock):
         
         self.dropout = res.dropout
         self.out_channels = res.out_channels
+        self.unite_act_shortcut_ln = unite_act_shortcut_ln
         
         #self.use_conv = res.use_conv
         
@@ -219,7 +224,9 @@ class QuantResBlockHF15(QuantResBlock):
         self.h_upd = None #res.h_upd
         self.x_upd = None #res.x_upd
 
+        
         self.skip_time_act = res.skip_time_act or skip_time_act
+
         if self.skip_time_act:
             self.emb_layers = res.time_emb_proj
         else:
@@ -227,8 +234,11 @@ class QuantResBlockHF15(QuantResBlock):
         
         self.out_layers =  nn.Sequential(res.norm2,copy.deepcopy(res.nonlinearity),res.dropout,res.conv2)
         
+        self.act_op_skip_ln = None
         if res.use_in_shortcut:
             self.skip_connection = res.conv_shortcut
+            if self.unite_act_shortcut_ln:
+                self.unite_act_quantizers()
         else:
             self.skip_connection = nn.Identity()
 
@@ -236,7 +246,16 @@ class QuantResBlockHF15(QuantResBlock):
         self.kkwargs = 'emb'
         self.ew_add_1 = KerenlEwAdd(in1_name='h',in2_name='emb')
         self.ew_add_2 = KerenlEwAdd(in1_name='skip',in2_name='h')
-    
+
+    def unite_act_quantizers(self):
+
+        self.in_layers[0].act_quantizer = None
+        self.in_layers[0].disable_act_quant = True
+        self.skip_connection.act_quantizer = None
+        self.skip_connection.disable_act_quant = True 
+        self.act_op_skip_ln = QuantOp(nn.Identity(),
+                                      act_quant_params=self.skip_connection.act_quant_params,
+                                        act_quant_mode = self.skip_connection.act_quant_mode)
     def set_split(self,split):
         self.split = split
         if isinstance(self.skip_connection,QuantModule):

@@ -327,18 +327,19 @@ class QuantModule(nn.Module):
         if not isinstance(self,QuantOp):
             self.weight_quantizer_0 = UniformAffineQuantizer(**self.weight_quant_params)
         
-        if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
-            if self.act_quant_params['split_to_16bits']:
-                self.split_act = False
-                self.act_quantizer = UniformAffineQuantizer(**{**self.act_quant_params,'n_bits':16})
-            else:
-                self.act_quantizer_0 = UniformAffineQuantizer(**self.act_quant_params)
+        if not self.disable_act_quant:
+            if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
+                if self.act_quant_params['split_to_16bits']:
+                    self.split_act = False
+                    self.act_quantizer = UniformAffineQuantizer(**{**self.act_quant_params,'n_bits':16})
+                else:
+                    self.act_quantizer_0 = UniformAffineQuantizer(**self.act_quant_params)
 
     def set_running_stat(self, running_stat: bool):
         if self.disable_act_quant: 
             if running_stat:
                 logger.warning(f'{self.full_name} Activation quantization is disabled, running stat is not set!')
-        return
+            return
         if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
             self.act_quantizer.running_stat = running_stat
             if self.split_act != 0:
@@ -348,7 +349,7 @@ class QuantModule(nn.Module):
 class QuantOp(QuantModule):
     """
     """
-    def __init__(self, org_module: Union[nn.SiLU, nn.GroupNorm],act_quant_params: dict = {},
+    def __init__(self, org_module: Union[nn.SiLU, nn.GroupNorm,nn.Identity],act_quant_params: dict = {},
                   disable_act_quant: bool = False, act_quant_mode: str = 'qdiff'):
         torch.nn.Module.__init__(self)
         self.act_quant_params = act_quant_params
