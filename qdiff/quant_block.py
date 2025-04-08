@@ -324,6 +324,9 @@ class QuantAttentionBlock(BaseQuantBlock):
 def cross_attn_forward(self, x, context=None, mask=None):
     h = self.heads
 
+    if self.act_quantizer_to_kvq is not None and self.use_act_quant:
+        x = self.act_quantizer_to_kvq(x)
+
     q = self.to_q(x)
     context = default(context, x)
     k = self.to_k(context)
@@ -358,7 +361,7 @@ def cross_attn_forward(self, x, context=None, mask=None):
 class QuantBasicTransformerBlock(BaseQuantBlock):
     def __init__(
         self, tran: BasicTransformerBlock, act_quant_params: dict = {}, 
-        sm_abit: int = 8):
+        sm_abit: int = 8,unite_kvq_act=False):
         super().__init__()
         self.attn1 = tran.attn1
         self.ff = tran.ff
@@ -392,11 +395,30 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.attn1.use_act_quant = False
         self.attn2.use_act_quant = False
         self.kkwargs = 'encoder_hidden_states'
+
+        self.unite_kvq_act = unite_kvq_act
+        self.attn1.act_quantizer_to_kvq = None
+        self.attn2.act_quantizer_to_kvq = None
+        
+        if  self.unite_kvq_act:
+            self.unite_act_quantizers()
         
         self.ew_add_1 = KerenlEwAdd(in1_name='attn1',in2_name='x',channels_dim=-1)
         self.ew_add_2 = KerenlEwAdd(in1_name='attn2',in2_name='x',channels_dim=-1)
         self.ew_add_3 = KerenlEwAdd(in1_name='ff',in2_name='x',channels_dim=-1)
-       
+    
+    def unite_act_quantizers(self):
+
+        self.attn1.to_q.act_quantizer = None
+        self.attn1.to_q.disable_act_quant = True
+        self.attn1.to_k.act_quantizer = None
+        self.attn1.to_k.disable_act_quant = True
+        self.attn1.to_v.act_quantizer = None
+        self.attn1.to_v.disable_act_quant = True
+        self.attn1.act_quantizer_to_kvq = UniformAffineQuantizer(**self.attn1.to_q.act_quant_params)
+
+
+
 
     def forward(self, x, encoder_hidden_states=None,**kwargs):
         # print(f"x shape {x.shape} context shape {context.shape}")

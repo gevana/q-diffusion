@@ -35,6 +35,7 @@ class QuantModel(nn.Module):
         self.sm_abit = kwargs.get('sm_abit', 8)
         self.quant_act_ops = kwargs.get('quant_act_ops', False)
         self.use_post_act_temb = kwargs.get('use_post_act_temb', False)
+        self.unite_kvq_act = kwargs.get('unite_kvq_act', False)
         self.in_channels = model.in_channels
         add_full_name_to_module(self.model)
         if hasattr(model, 'image_size'):
@@ -121,7 +122,7 @@ class QuantModel(nn.Module):
             if type(child_module) in self.specials:
                 if self.specials[type(child_module)] in [QuantBasicTransformerBlock, QuantAttnBlock]:
                     setattr(module, name, self.specials[type(child_module)](child_module,
-                        act_quant_params, sm_abit=self.sm_abit))
+                        act_quant_params, sm_abit=self.sm_abit,unite_kvq_act=self.unite_kvq_act))
                 elif self.specials[type(child_module)] == QuantSMVMatMul:
                     setattr(module, name, self.specials[type(child_module)](
                         act_quant_params, sm_abit=self.sm_abit))
@@ -160,6 +161,9 @@ class QuantModel(nn.Module):
                     m.attn2.act_quantizer_k.running_stat = running_stat
                     m.attn2.act_quantizer_v.running_stat = running_stat
                     m.attn2.act_quantizer_w.running_stat = running_stat
+                    if self.unite_kvq_act:
+                        m.attn1.act_quantizer_to_kvq.running_stat = running_stat
+                        
             if isinstance(m, QuantModule) and not sm_only:
                 m.set_running_stat(running_stat)
 

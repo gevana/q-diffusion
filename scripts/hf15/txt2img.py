@@ -322,6 +322,10 @@ def main():
         help="first act quant then weight quant"
     )
 
+    parser.add_argument(
+        "--unite_kvq_act",type=str,default = "false",
+        help ="unite_kvq_act"
+    )
     # qdiff specific configs
     parser.add_argument(
         "--cali_st", type=int, default=1, 
@@ -423,9 +427,10 @@ def main():
     opt.naive_weights_quant = str2bool(opt.naive_weights_quant)
     opt.rev_order = str2bool(opt.rev_order)
     opt.gen_val_images = str2bool(opt.gen_val_images)
+    opt.unite_kvq_act = str2bool(opt.unite_kvq_act)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_verd"
+    p_name = "q-diff-hf1.5_vere"
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
@@ -450,6 +455,7 @@ def main():
                 "act_quant_mode": opt.quant_mode,
                 "naive_weights_quant": opt.naive_weights_quant,
                 "rev_order": opt.rev_order,
+                "unite_kvq_act": opt.unite_kvq_act,
                 "sm_abit": opt.sm_abit,
                 "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
@@ -495,7 +501,8 @@ def main():
         logger.info(f"Loading model from {opt.fp_model_path}")
         assert Path(opt.fp_model_path).exists()
         qnn,pipe = init_qnn_from_fp_model(opt.fp_model_path, weight_quant_params=wq_params, act_quant_params=aq_params,scheduler = 'euler',
-                                          act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops, split=opt.split)
+                                          act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops, split=opt.split,
+                                          unite_kvq_act = opt.unite_kvq_act)
     else:
         logger.info(f"Loading model from original model")
         pipe = init_pipe()

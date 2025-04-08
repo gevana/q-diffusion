@@ -335,6 +335,10 @@ class QuantModule(nn.Module):
                 self.act_quantizer_0 = UniformAffineQuantizer(**self.act_quant_params)
 
     def set_running_stat(self, running_stat: bool):
+        if self.disable_act_quant: 
+            if running_stat:
+                logger.warning(f'{self.full_name} Activation quantization is disabled, running stat is not set!')
+        return
         if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
             self.act_quantizer.running_stat = running_stat
             if self.split_act != 0:
