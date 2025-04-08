@@ -338,7 +338,7 @@ class QuantModule(nn.Module):
         if self.disable_act_quant: 
             if running_stat:
                 logger.warning(f'{self.full_name} Activation quantization is disabled, running stat is not set!')
-        return
+            return
         if self.act_quant_mode == 'qdiff' or self.act_quant_mode == 'rtn':
             self.act_quantizer.running_stat = running_stat
             if self.split_act != 0:
