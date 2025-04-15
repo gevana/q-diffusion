@@ -378,7 +378,7 @@ def main():
         help="disable gradient checkpointing"
     )
     parser.add_argument(
-        "--split", action="store_true",
+        "--split", type=str, default = "false",
         help="use split strategy in skip connection"
     )
     parser.add_argument(
@@ -433,9 +433,10 @@ def main():
     opt.gen_val_images = str2bool(opt.gen_val_images)
     opt.unite_kvq_act = str2bool(opt.unite_kvq_act)
     opt.unite_skip_ln = str2bool(opt.unite_skip_ln)
+    opt.split = str2bool(opt.split)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_verf_1" # act_op_skip_ln with  skip_connection identity()
+    p_name = "q-diff-hf1.5_verf_2" # act_op_skip_ln with  skip_connection identity()
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
@@ -462,6 +463,7 @@ def main():
                 "rev_order": opt.rev_order,
                 "unite_kvq_act": opt.unite_kvq_act,
                 "unite_skip_ln": opt.unite_skip_ln,
+                "split": opt.split,
                 "sm_abit": opt.sm_abit,
                 "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,

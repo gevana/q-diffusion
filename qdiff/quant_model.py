@@ -5,7 +5,7 @@ import torch
 from qdiff.quant_block import get_specials, BaseQuantBlock
 from qdiff.quant_block import QuantBasicTransformerBlock, QuantResBlock ,TimeStepEmbeddingSilu,QuantResBlockHF15
 from qdiff.quant_block import QuantQKMatMul, QuantSMVMatMul, QuantBasicTransformerBlock, QuantAttnBlock,KerenlEwAdd
-from qdiff.quant_layer import QuantModule, StraightThrough, QuantOp
+from qdiff.quant_layer import QuantModule, StraightThrough, QuantOp,UniformAffineQuantizer
 #from ldm.modules.attention import BasicTransformerBlock
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.embeddings import TimestepEmbedding
@@ -178,6 +178,27 @@ class QuantModel(nn.Module):
                 # m.use_checkpoint = grad_ckpt
 
 
+    def load_from_state_dict(self,saved_model_path,input_batch=None):
+        if input_batch is None:
+            input_batch = [torch.randn((1, 4, 64, 64)),torch.randn(1),torch.randn((1,77,768))]
+    
+        self.set_quant_state(weight_quant=True, act_quant=True)
+        _=self.model(*input_batch)
+        self.set_quant_state(False, False)
+    
+        for m in self.model.modules():
+            if isinstance(m, UniformAffineQuantizer):
+                if m.delta is not None:
+                    m.delta = nn.Parameter(torch.tensor(m.delta,dtype=torch.float32))
+                else: 
+                    raise ValueError(f"delta is None for {m.full_name}")
+                if m.zero_point is not None:
+                    m.zero_point = nn.Parameter(torch.tensor(m.zero_point,dtype=torch.float32))
+                else:
+                    raise ValueError(f"zero_point is None for {m.full_name}")
+        self.load_state_dict(torch.load(saved_model_path),strict=True)           
+        
+
 
 
 
@@ -226,5 +247,7 @@ def init_qnn_from_fp_model(har_path,weight_quant_params: dict = {}, act_quant_pa
 
     snr = calc_snr(out_org[0],out_reorg_qnn[0])
     print (f"SNR of acceleras fp model : {snr} [db]")
+    
+   
     return qnn , pipe
 
