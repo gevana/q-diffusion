@@ -435,7 +435,7 @@ def main():
     opt.unite_skip_ln = str2bool(opt.unite_skip_ln)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_vere"
+    p_name = "q-diff-hf1.5_verf"
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
