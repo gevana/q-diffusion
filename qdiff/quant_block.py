@@ -237,10 +237,11 @@ class QuantResBlockHF15(QuantResBlock):
         self.act_op_skip_ln = None
         if res.use_in_shortcut:
             self.skip_connection = res.conv_shortcut
-            if self.unite_skip_ln:
-                self.unite_act_quantizers()
         else:
             self.skip_connection = nn.Identity()
+
+        if self.unite_skip_ln:
+            self.unite_act_quantizers()
 
         self.split = 0
         self.kkwargs = 'emb'
@@ -251,11 +252,16 @@ class QuantResBlockHF15(QuantResBlock):
 
         self.in_layers[0].act_quantizer = None
         self.in_layers[0].disable_act_quant = True
-        self.skip_connection.act_quantizer = None
-        self.skip_connection.disable_act_quant = True 
+       
         self.act_op_skip_ln = QuantOp(nn.Identity(),
-                                      act_quant_params=self.skip_connection.act_quant_params,
-                                        act_quant_mode = self.skip_connection.act_quant_mode)
+                                      act_quant_params=self.in_layers[0].act_quant_params,
+                                        act_quant_mode = self.in_layers[0].act_quant_mode)
+        
+        if not isinstance(self.skip_connection,nn.Identity):
+            self.skip_connection.act_quantizer = None
+            self.skip_connection.disable_act_quant = True 
+
+
     def set_split(self,split):
         self.split = split
         if isinstance(self.skip_connection,QuantModule):
