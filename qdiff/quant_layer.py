@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Union
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +221,20 @@ class UniformAffineQuantizer(nn.Module):
         s = 'bit={n_bits}, scale_method={scale_method}, symmetric={sym}, channel_wise={channel_wise},' \
             ' leaf_param={leaf_param}'
         return s.format(**self.__dict__)
+    
+    def calc_limvals(self):
+        if self.channel_wise:
+            raise NotImplementedError('channel wise not supported')
+        if self.sym:
+            x_min = -self.delta * self.n_levels
+            x_max = self.delta * self.n_levels
+        else:
+            x_min = self.delta * (0-self.zero_point)
+            x_max = self.delta * (self.n_levels-1-self.zero_point)
+        return np.array([x_min.detach().cpu().numpy(), x_max.detach().cpu().numpy()])
+        
+
+        
 
 
 class QuantModule(nn.Module):

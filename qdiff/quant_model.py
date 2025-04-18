@@ -219,7 +219,7 @@ def _get_output_for_continuous_inputs_ew_add(self, hidden_states, residual, batc
     return output
 
 def init_qnn_from_fp_model(har_path,weight_quant_params: dict = {}, act_quant_params: dict = {}, 
-                            input_batch=None,scheduler='ddim',debug=False,**kwargs) -> QuantModel:
+                            input_batch=None,scheduler='ddim',debug=False,out_uu=False,**kwargs) -> QuantModel:
     
     if input_batch is None:
         input_batch = [torch.randn((1, 4, 64, 64)),torch.randn(1),torch.randn((1,77,768))]
@@ -248,6 +248,7 @@ def init_qnn_from_fp_model(har_path,weight_quant_params: dict = {}, act_quant_pa
     snr = calc_snr(out_org[0],out_reorg_qnn[0])
     print (f"SNR of acceleras fp model : {snr} [db]")
     
-   
+    if out_uu:
+        return qnn,pipe,uu
     return qnn , pipe
 
