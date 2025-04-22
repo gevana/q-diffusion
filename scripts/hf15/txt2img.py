@@ -436,7 +436,7 @@ def main():
     opt.split = str2bool(opt.split)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_verf_2" # act_op_skip_ln with  skip_connection identity()
+    p_name = "q-diff-hf1.5_verf_3" # act_op_skip_ln with  skip_connection identity() , act for norm attn.
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
