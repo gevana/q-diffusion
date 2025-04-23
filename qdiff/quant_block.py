@@ -433,6 +433,10 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.ew_add_1 = KerenlEwAdd(in1_name='attn1',in2_name='x',channels_dim=-1)
         self.ew_add_2 = KerenlEwAdd(in1_name='attn2',in2_name='x',channels_dim=-1)
         self.ew_add_3 = KerenlEwAdd(in1_name='ff',in2_name='x',channels_dim=-1)
+
+        self.act_norm1 = QuantOp(nn.Identity(),act_quant_params=act_quant_params)
+        self.act_norm2 = QuantOp(nn.Identity(),act_quant_params=act_quant_params)
+        self.act_norm3 = QuantOp(nn.Identity(),act_quant_params=act_quant_params)
     
     def unite_act_quantizers(self):
 
@@ -459,10 +463,13 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
             x, context = x
 
         #x =              self.attn1(self.norm1(x)) + x
+        x = self.act_norm1(x)
         x = self.ew_add_1(self.attn1(self.norm1(x)) , x)
         #x =              self.attn2(self.norm2(x), context=context) + x
+        x = self.act_norm2(x)
         x = self.ew_add_2(self.attn2(self.norm2(x), context=context) , x)
         #x =              self.ff(self.norm3(x)) + x
+        x = self.act_norm3(x)
         x = self.ew_add_3(self.ff(self.norm3(x)) , x)
         return x
     

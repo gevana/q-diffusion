@@ -92,6 +92,7 @@ class QuantModel(nn.Module):
                 setattr(module, name, GroupNorm32(child_module))
             else:
                 self.refacor_group_norm(child_module)
+    
 
     def quant_module_refactor(self, module: nn.Module, weight_quant_params: dict = {}, act_quant_params: dict = {}):
         """
