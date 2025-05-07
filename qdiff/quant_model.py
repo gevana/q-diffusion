@@ -277,7 +277,7 @@ def init_qnn_from_qdiff_opt(qdiff_opt_path):
              'symmetric': opt.symmetric_weight ,'debug':False}
     aq_params = {'n_bits': 8, 'channel_wise': False, 'scale_method': 'max', 
                         'leaf_param': True, 'debug':False,'split_to_16bits':opt.split_to_16bits,
-                        'act_quant_mode' :'qdiff'}
+                        'act_quant_mode' :'qdiff','act16bits_rtn':opt.act16bits_rtn,}
     split = opt.split
     sm_abit = opt.sm_abit
     quant_act_ops = opt.quant_act_ops

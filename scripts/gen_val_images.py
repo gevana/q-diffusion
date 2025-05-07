@@ -18,17 +18,19 @@ if torch.cuda.is_available():
     device = 'cuda'
 else:
     device = 'cpu'
-generator = torch.Generator(device).manual_seed(42)
+
 
 def gen_images(pipe, num_images = 4,num_inference_steps =20,
                 output_image_path = './validation_images/validation_images.png',
-                negative_prompt = None,):
+                negative_prompt = None,
+                generator = None):
     if negative_prompt == 'dafualt':
         negative_prompt = ("ugly, tiling, poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame,"
         "extra limbs, disfigured, deformed, body out of frame, bad anatomy, watermark, signature,"
         "cut off, low contrast, underexposed, overexposed, bad art, beginner, amateur, distorted face")
 
-
+    if generator is None:
+        generator = torch.Generator(device).manual_seed(42)
     pipe = pipe.to(device)
     I =[]
     for prompt in prompts[:num_images]: 
