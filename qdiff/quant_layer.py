@@ -47,7 +47,7 @@ class UniformAffineQuantizer(nn.Module):
     :param scale_method: determines the quantization scale and zero point
     """
     def __init__(self, n_bits: int = 8, symmetric: bool = False, channel_wise: bool = False, scale_method: str = 'max',
-                 leaf_param: bool = False, always_zero: bool = False,debug = False,act_quant_mode='qdiff' ,**kwargs):
+                 leaf_param: bool = False, always_zero: bool = False,debug = False,act_quant_mode='qdiff',act16bits_rtn=False ,**kwargs):
         super(UniformAffineQuantizer, self).__init__()
         self.sym = symmetric
         # assert 2 <= n_bits <= 8, 'bitwidth not supported'
@@ -63,6 +63,11 @@ class UniformAffineQuantizer(nn.Module):
         self.always_zero = symmetric
         self.debug = debug
         self.act_quant_mode = act_quant_mode
+        self.act16bits_rtn = act16bits_rtn
+
+        if self.n_bits == 16 and self.act16bits_rtn:
+            self.act_quant_mode = 'rtn'
+            logger.info(f"act quant mode is set to {self.act_quant_mode} for 16 bits") 
         if self.leaf_param:
             self.x_min, self.x_max = None, None
         

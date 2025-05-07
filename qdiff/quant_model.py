@@ -103,6 +103,9 @@ class QuantModel(nn.Module):
         :param act_quant_params: quantization parameters like n_bits for activation quantizer
         """
         prev_quantmodule = None
+        act_quant_params_layer_norm = act_quant_params.copy()
+        act_quant_params_layer_norm['n_bits'] = 16
+
         for name, child_module in module.named_children():
             if isinstance(child_module, (nn.Conv2d, nn.Conv1d, nn.Linear)): # nn.Conv1d
                 setattr(module, name, QuantModule(
@@ -111,8 +114,12 @@ class QuantModel(nn.Module):
             elif self.quant_act_ops and isinstance(child_module,(nn.SiLU,GroupNorm32)):
                 if self.use_post_act_temb and  isinstance(module, TimeStepEmbeddingSilu):
                     continue
-                setattr(module, name, QuantOp(
-                    child_module, act_quant_params))
+                if isinstance(child_module, nn.SiLU):
+                    setattr(module, name, QuantOp(
+                        child_module, act_quant_params))
+                elif isinstance(child_module, GroupNorm32):
+                    setattr(module, name, QuantOp(
+                        child_module,act_quant_params_layer_norm))
 
             elif isinstance(child_module, StraightThrough):
                 continue

@@ -89,6 +89,9 @@ def layer_reconstruction(model: QuantModel, layer: QuantModule, cali_data: torch
         scheduler = None
     else:
         # Use UniformAffineQuantizer to learn delta
+        if layer.act_quantizer.n_bits == 16:
+            logger.info(f'layer {layer.full_name} is 16-bit quantization, skip optimization')
+            return
         opt_params = [layer.act_quantizer.delta]
         activation_to_optimize.append(layer.act_quantizer)
         

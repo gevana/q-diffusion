@@ -330,6 +330,10 @@ def main():
         "--unite_skip_ln",type=str,default = "false",
         help ="unite_skip_ln"
     )
+    parser.add_argument(
+        "--act16bits_rtn",type=str,default = "false",
+        help ="act16bits_rtn"
+    )
     # qdiff specific configs
     parser.add_argument(
         "--cali_st", type=int, default=1, 
@@ -434,9 +438,10 @@ def main():
     opt.unite_kvq_act = str2bool(opt.unite_kvq_act)
     opt.unite_skip_ln = str2bool(opt.unite_skip_ln)
     opt.split = str2bool(opt.split)
+    opt.act16bits_rtn = str2bool(opt.act16bits_rtn)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_verf_3" # act_op_skip_ln with  skip_connection identity() , act for norm attn.
+    p_name = "q-diff-hf1.5_verh" # act_op_skip_ln with  skip_connection identity() , act for norm attn. 16bit rtn.16bit act norm.
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
@@ -463,6 +468,7 @@ def main():
                 "rev_order": opt.rev_order,
                 "unite_kvq_act": opt.unite_kvq_act,
                 "unite_skip_ln": opt.unite_skip_ln,
+                "act16bits_rtn": opt.act16bits_rtn,
                 "split": opt.split,
                 "sm_abit": opt.sm_abit,
                 "ddim_steps": opt.ddim_steps,
@@ -500,7 +506,9 @@ def main():
     wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
                     'symmetric':opt.symmetric_weight,'debug':opt.debug}
     aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
-                    'leaf_param':  opt.quant_act, 'debug':opt.debug,'split_to_16bits':opt.split_to_16bits,'act_quant_mode' :opt.quant_mode}
+                    'leaf_param':  opt.quant_act, 'debug':opt.debug,
+                    'split_to_16bits':opt.split_to_16bits,'act_quant_mode' :opt.quant_mode,
+                    "act16bits_rtn": opt.act16bits_rtn,}
     if opt.naive_weights_quant:
         wq_params['scale_method'] = 'max'
     

@@ -131,11 +131,11 @@ def block_reconstruction(model: QuantModel, block: BaseQuantBlock, cali_data: to
 
         for name, module in block.named_modules():
             if isinstance(module, (QuantModule , QuantOp)):
-                if module.act_quantizer is not None and module.act_quantizer.delta is not None:
+                if module.act_quantizer is not None and module.act_quantizer.delta is not None and module.act_quantizer.n_bits != 16:
                     opt_params += [module.act_quantizer.delta]
                     act_to_optimize.append(module.act_quantizer)
                 if (module.split_act != 0 and module.disable_act_quant is False
-                    and module.act_quantizer_0.delta is not None):
+                    and module.act_quantizer_0.delta is not None and module.act_quantizer_0.n_bits != 16):
                     opt_params += [module.act_quantizer_0.delta]
                     act_to_optimize.append(module.act_quantizer_0)
 
