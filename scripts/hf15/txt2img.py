@@ -447,7 +447,7 @@ def main():
     opt.act16bits_rtn = str2bool(opt.act16bits_rtn)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_verh" # act_op_skip_ln with  skip_connection identity() , act for norm attn. 16bit rtn.16bit act norm.
+    p_name = "q-diff-hf1.5_veri" # act_op_skip_ln with  skip_connection identity() , act for norm attn. 16bit rtn.16bit act norm.
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
