@@ -477,6 +477,7 @@ def main():
                 "act16bits_rtn": opt.act16bits_rtn,
                 "split": opt.split,
                 "sm_abit": opt.sm_abit,
+                "partial_sm_abit": opt.partial_sm_abit,
                 "ddim_steps": opt.ddim_steps,
                 "resume_w": opt.resume_w,
                 "resume": opt.resume,
