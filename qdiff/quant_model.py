@@ -27,6 +27,16 @@ from mo_utils.utils.stand_alone_utils.quant_utils import calc_snr,calc_stats
 
 logger = logging.getLogger(__name__)
 
+PartialSmAbit = {
+    'ver0': [],
+    'ver1':[
+        'down_blocks.0.attentions.0.transformer_blocks.0.attn1', # mm2
+        'down_blocks.0.attentions.1.transformer_blocks.0.attn1',# mm6
+        'up_blocks.3.attentions.0.transformer_blocks.0.attn1', # mm54
+        'up_blocks.3.attentions.1.transformer_blocks.0.attn1', # mm58
+        'up_blocks.3.attentions.2.transformer_blocks.0.attn1', # mm62
+        ],
+    }
 
 class QuantModel(nn.Module):
 
@@ -261,23 +271,33 @@ def init_qnn_from_fp_model(har_path,weight_quant_params: dict = {}, act_quant_pa
         return qnn,pipe,uu
     return qnn , pipe
 
-def init_qnn_from_qdiff_opt(qdiff_opt_path):
-    
-    qdiff_opt_path = Path(qdiff_opt_path)
-    opt_params = qdiff_opt_path / 'opt.pth'
-    qdiff_opt_model = qdiff_opt_path / 'ckpt.pth' 
 
-    if not opt_params.exists() or not qdiff_opt_model.exists():
-        raise ValueError(f"opt.pth or ckpt.pth not found in {qdiff_opt_path}")
+def init_qnn_from_opt_params(opt,scale_method,debug=False,):
     
-    opt = torch.load(opt_params)
 
     fp_model_path = opt.fp_model_path
-    wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'max',
-             'symmetric': opt.symmetric_weight ,'debug':False}
-    aq_params = {'n_bits': 8, 'channel_wise': False, 'scale_method': 'max', 
-                        'leaf_param': True, 'debug':False,'split_to_16bits':opt.split_to_16bits,
-                        'act_quant_mode' :'qdiff','act16bits_rtn':opt.act16bits_rtn,}
+    
+    if 'partial_sm_abit' in opt:
+        partial_sm_abit=PartialSmAbit[opt.partial_sm_abit]
+    else:
+        print(f"partial_sm_abit is not in opt, using ver0")
+        partial_sm_abit = PartialSmAbit['ver0']
+
+
+    wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': scale_method,
+                'symmetric': opt.symmetric_weight ,'debug':opt.debug or debug,}
+    
+   
+    
+    aq_params = {'n_bits': 8, 'channel_wise': False, 'scale_method': scale_method, 
+                'leaf_param': True, 'debug':opt.debug or debug,
+                'split_to_16bits':opt.split_to_16bits,
+                'act_quant_mode' :'qdiff','act16bits_rtn':opt.act16bits_rtn,
+                'partial_sm_abit': partial_sm_abit,}
+    
+    if opt.naive_weights_quant:
+        wq_params['scale_method'] = 'max'
+    
     split = opt.split
     sm_abit = opt.sm_abit
     quant_act_ops = opt.quant_act_ops
@@ -295,6 +315,23 @@ def init_qnn_from_qdiff_opt(qdiff_opt_path):
                     unite_skip_ln= unite_skip_ln
                     )
     
+    return qnn,pipe,uu
+
+
+def init_qnn_from_qdiff_opt(qdiff_opt_path):
+    
+    qdiff_opt_path = Path(qdiff_opt_path)
+    opt_params = qdiff_opt_path / 'opt.pth'
+    qdiff_opt_model = qdiff_opt_path / 'ckpt.pth' 
+
+    if not opt_params.exists() or not qdiff_opt_model.exists():
+        raise ValueError(f"opt.pth or ckpt.pth not found in {qdiff_opt_path}")
+    
+    opt = torch.load(opt_params)
+
+    qnn,pipe,uu = init_qnn_from_opt_params(opt,scale_method= 'mse')
+    
     qnn.load_from_state_dict(str(qdiff_opt_model))
 
     return qnn,pipe,uu
+

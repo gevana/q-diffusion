@@ -236,6 +236,8 @@ class UniformAffineQuantizer(nn.Module):
         else:
             x_min = self.delta * (0-self.zero_point)
             x_max = self.delta * (self.n_levels-1-self.zero_point)
+            x_min = torch.minimum(x_min, torch.tensor(0.0, device=x_min.device))
+            x_max = torch.maximum(x_max, torch.tensor(0.0, device=x_max.device))
         return np.array([x_min.detach().cpu().numpy(), x_max.detach().cpu().numpy()])
         
 

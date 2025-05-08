@@ -21,7 +21,7 @@ from qdiff import (
     QuantModel, QuantModule, BaseQuantBlock, 
     block_reconstruction, layer_reconstruction,unetHF_reconstruction,
 )
-from qdiff.quant_model import init_qnn_from_fp_model
+from qdiff.quant_model import init_qnn_from_fp_model,init_qnn_from_opt_params
 from qdiff.adaptive_rounding import AdaRoundQuantizer
 from qdiff.quant_layer import UniformAffineQuantizer
 from qdiff.utils import resume_cali_model, get_train_samples
@@ -67,6 +67,7 @@ def numpy_to_pil(images):
     pil_images = [Image.fromarray(image) for image in images]
 
     return pil_images
+
 
 
 def load_model_from_config(config, ckpt, verbose=False):
@@ -334,6 +335,11 @@ def main():
         "--act16bits_rtn",type=str,default = "false",
         help ="act16bits_rtn"
     )
+    parser.add_argument(
+        "--partial_sm_abit",type=str,default = "ver0",
+        help ="set some attn sm_abit to 8/16bits"
+    )
+
     # qdiff specific configs
     parser.add_argument(
         "--cali_st", type=int, default=1, 
@@ -503,29 +509,10 @@ def main():
     assert(opt.cond)
    
     
-    wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': 'mse',
-                    'symmetric':opt.symmetric_weight,'debug':opt.debug}
-    aq_params = {'n_bits': opt.act_bit, 'channel_wise': False, 'scale_method': 'mse', 
-                    'leaf_param':  opt.quant_act, 'debug':opt.debug,
-                    'split_to_16bits':opt.split_to_16bits,'act_quant_mode' :opt.quant_mode,
-                    "act16bits_rtn": opt.act16bits_rtn,}
-    if opt.naive_weights_quant:
-        wq_params['scale_method'] = 'max'
-    
-    
-    if opt.fp_model_path:
-        logger.info(f"Loading model from {opt.fp_model_path}")
-        assert Path(opt.fp_model_path).exists()
-        qnn,pipe = init_qnn_from_fp_model(opt.fp_model_path, weight_quant_params=wq_params, act_quant_params=aq_params,scheduler = 'euler',
-                                          act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops, split=opt.split,
-                                          unite_kvq_act = opt.unite_kvq_act,unite_skip_ln= opt.unite_skip_ln)
-    else:
-        logger.info(f"Loading model from original model")
-        pipe = init_pipe()
-        model = pipe.unet
-        qnn = QuantModel(
-        model=model, weight_quant_params=wq_params, act_quant_params=aq_params,
-        act_quant_mode="qdiff", sm_abit=opt.sm_abit,quant_act_ops = opt.quant_act_ops, split=opt.split)
+    logger.info(f"Loading model from {opt.fp_model_path}")
+    assert Path(opt.fp_model_path).exists()
+    qnn,pipe,uu = init_qnn_from_opt_params(opt,scale_method = 'mse',)
+
     
     qnn.cuda()
     qnn.eval()
@@ -664,10 +651,12 @@ def main():
                     else:
                         m.zero_point = nn.Parameter(m.zero_point)
         torch.save(qnn.state_dict(), os.path.join(outpath, "ckpt.pth"))
-        torch.save(aq_params, os.path.join(outpath, "aq_params.pth"))
-        torch.save(wq_params, os.path.join(outpath, "wq_params.pth"))
+        #torch.save(aq_params, os.path.join(outpath, "aq_params.pth"))
+        #torch.save(wq_params, os.path.join(outpath, "wq_params.pth"))
         torch.save(opt, os.path.join(outpath, "opt.pth"))
 
+        #qdiff_matmul1_limvals,qdiff_matmul2_limvals,qdiff_convs_limvals,qdiff_lnorm_limvals = uu.save_limvas_to_path(
+        #            os.path.join(outpath ,'limvals'))
             
 
     n_samples = opt.n_samples 

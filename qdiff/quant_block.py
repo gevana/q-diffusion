@@ -412,8 +412,18 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         act_quant_params_w = act_quant_params.copy()
         act_quant_params_w['n_bits'] = sm_abit
         act_quant_params_w['always_zero'] = True
-        self.attn1.act_quantizer_w = UniformAffineQuantizer(**act_quant_params_w)
-        self.attn2.act_quantizer_w = UniformAffineQuantizer(**act_quant_params_w)
+
+        if self.attn1.full_name in act_quant_params['partial_sm_abit']:
+            logger.info(f"attn1 {self.attn1.full_name} in partial_sm_abit=8")
+            self.attn1.act_quantizer_w = UniformAffineQuantizer(**act_quant_params)
+        else:
+            self.attn1.act_quantizer_w = UniformAffineQuantizer(**act_quant_params_w)
+        
+        if self.attn2.full_name in act_quant_params['partial_sm_abit']:
+            logger.info(f"attn2 {self.attn2.full_name} in partial_sm_abit=8")
+            self.attn2.act_quantizer_w = UniformAffineQuantizer(**act_quant_params)
+        else:
+            self.attn2.act_quantizer_w = UniformAffineQuantizer(**act_quant_params_w)
 
         self.attn1.forward = MethodType(cross_attn_forward, self.attn1)
         self.attn2.forward = MethodType(cross_attn_forward, self.attn2)
@@ -434,9 +444,13 @@ class QuantBasicTransformerBlock(BaseQuantBlock):
         self.ew_add_2 = KerenlEwAdd(in1_name='attn2',in2_name='x',channels_dim=-1)
         self.ew_add_3 = KerenlEwAdd(in1_name='ff',in2_name='x',channels_dim=-1)
 
-        self.act_norm1 = QuantOp(nn.Identity(),act_quant_params=act_quant_params_w) # before layer norm we put 16bits quantizer
-        self.act_norm2 = QuantOp(nn.Identity(),act_quant_params=act_quant_params_w) # before layer norm we put 16bits quantizer
-        self.act_norm3 = QuantOp(nn.Identity(),act_quant_params=act_quant_params_w) # before layer norm we put 16bits quantizer
+        act_quant_params_n = act_quant_params.copy()
+        act_quant_params_n['n_bits'] = 16
+        act_quant_params_n['always_zero'] = True
+
+        self.act_norm1 = QuantOp(nn.Identity(),act_quant_params=act_quant_params_n) # before layer norm we put 16bits quantizer
+        self.act_norm2 = QuantOp(nn.Identity(),act_quant_params=act_quant_params_n) # before layer norm we put 16bits quantizer
+        self.act_norm3 = QuantOp(nn.Identity(),act_quant_params=act_quant_params_n) # before layer norm we put 16bits quantizer
     
     def unite_act_quantizers(self):
 
