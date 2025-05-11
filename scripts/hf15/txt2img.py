@@ -336,7 +336,7 @@ def main():
         help ="act16bits_rtn"
     )
     parser.add_argument(
-        "--partial_sm_abit",type=str,default = "ver0",
+        "--partial_sm_abit",type=str,default = "ver0",choices=["ver0","ver1"],
         help ="set some attn sm_abit to 8/16bits"
     )
 
