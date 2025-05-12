@@ -284,7 +284,7 @@ def init_qnn_from_opt_params(opt,scale_method,debug=False,):
         partial_sm_abit = PartialSmAbit['ver0']
 
 
-    wq_params = {'n_bits': opt.weight_bit, 'channel_wise': True, 'scale_method': scale_method,
+    wq_params = {'n_bits': opt.weight_bit, 'channel_wise': opt.channel_wise_weights, 'scale_method': scale_method,
                 'symmetric': opt.symmetric_weight ,'debug':opt.debug or debug,}
     
    

@@ -67,7 +67,7 @@ class UniformAffineQuantizer(nn.Module):
 
         if self.n_bits == 16 and self.act16bits_rtn:
             self.act_quant_mode = 'rtn'
-            logger.info(f"{self.full_name} act quant mode is set to {self.act_quant_mode} for 16 bits") 
+            logger.info(f"act quant mode is set to {self.act_quant_mode} for 16 bits") 
         if self.leaf_param:
             self.x_min, self.x_max = None, None
         

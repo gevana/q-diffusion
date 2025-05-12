@@ -336,6 +336,11 @@ def main():
         help ="act16bits_rtn"
     )
     parser.add_argument(
+        "--channel_wise_weights",type=str,default = "true",
+        help ="channel_wise_weights"
+    )
+
+    parser.add_argument(
         "--partial_sm_abit",type=str,default = "ver0",choices=["ver0","ver1"],
         help ="set some attn sm_abit to 8/16bits"
     )
@@ -445,9 +450,10 @@ def main():
     opt.unite_skip_ln = str2bool(opt.unite_skip_ln)
     opt.split = str2bool(opt.split)
     opt.act16bits_rtn = str2bool(opt.act16bits_rtn)
+    opt.channel_wise_weights = str2bool(opt.channel_wise_weights)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_veri" # act_op_skip_ln with  skip_connection identity() , act for norm attn. 16bit rtn.16bit act norm.
+    p_name = "q-diff-hf1.5_verj" #channel_wise_weights  act_op_skip_ln with  skip_connection identity() , act for norm attn. 16bit rtn.16bit act norm.
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
@@ -475,6 +481,7 @@ def main():
                 "unite_kvq_act": opt.unite_kvq_act,
                 "unite_skip_ln": opt.unite_skip_ln,
                 "act16bits_rtn": opt.act16bits_rtn,
+                "channel_wise_weights": opt.channel_wise_weights,
                 "split": opt.split,
                 "sm_abit": opt.sm_abit,
                 "partial_sm_abit": opt.partial_sm_abit,
@@ -573,7 +580,13 @@ def main():
                 add_full_name_to_module(qnn)
                 for m in qnn.model.modules():
                     if isinstance(m, UniformAffineQuantizer) and 'weight' in m.full_name:
-                        m.zero_point = nn.Parameter(m.zero_point)
+                        if m.zero_point is not None:
+                            if not torch.is_tensor(m.zero_point):
+                                m.zero_point = nn.Parameter(torch.tensor(float(m.zero_point)))
+                            else:
+                                m.zero_point = nn.Parameter(m.zero_point)
+                        else:
+                            logger.warning(f"!!!! zero_point is None for {m.full_name} !!!!!")
                         m.delta = nn.Parameter(m.delta)
 
             qnn.set_quant_state(weight_quant=True, act_quant=False)
