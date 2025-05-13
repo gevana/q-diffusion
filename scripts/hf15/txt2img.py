@@ -2,14 +2,10 @@ import argparse, os, datetime, gc, yaml
 import logging
 import cv2
 import numpy as np
-from omegaconf import OmegaConf
+
 from PIL import Image
 from tqdm import tqdm, trange
-#from imwatermark import WatermarkEncoder
 from itertools import islice
-from einops import rearrange
-#from torchvision.utils import make_grid
-import time
 from pytorch_lightning import seed_everything
 import torch
 import torch.nn as nn
@@ -29,18 +25,11 @@ from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionS
 from transformers import AutoFeatureExtractor
 from src.utils.torch_utils import add_full_name_to_module
 import wandb
-from scripts.gen_image import gen_image_from_prompt
 
-from diffusers import StableDiffusionPipeline, UNet2DConditionModel
 from scripts.gen_val_images import gen_images
-from scripts.hf15.init_pipe import init_pipe
 
 logger = logging.getLogger(__name__)
 
-# load safety model
-safety_model_id = "CompVis/stable-diffusion-safety-checker"
-safety_feature_extractor = AutoFeatureExtractor.from_pretrained(safety_model_id)
-safety_checker = StableDiffusionSafetyChecker.from_pretrained(safety_model_id)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -52,74 +41,7 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError(f"Boolean value expected. {v} was passed")
 
-def chunk(it, size):
-    it = iter(it)
-    return iter(lambda: tuple(islice(it, size)), ())
-
-
-def numpy_to_pil(images):
-    """
-    Convert a numpy image or a batch of images to a PIL image.
-    """
-    if images.ndim == 3:
-        images = images[None, ...]
-    images = (images * 255).round().astype("uint8")
-    pil_images = [Image.fromarray(image) for image in images]
-
-    return pil_images
-
-
-
-def load_model_from_config(config, ckpt, verbose=False):
-    logging.info(f"Loading model from {ckpt}")
-    pl_sd = torch.load(ckpt, map_location="cpu")
-    if "global_step" in pl_sd:
-        logging.info(f"Global Step: {pl_sd['global_step']}")
-    sd = pl_sd["state_dict"]
-    model = instantiate_from_config(config.model)
-    m, u = model.load_state_dict(sd, strict=False)
-    if len(m) > 0 and verbose:
-        logging.info("missing keys:")
-        logging.info(m)
-    if len(u) > 0 and verbose:
-        logging.info("unexpected keys:")
-        logging.info(u)
-
-    model.cuda()
-    model.eval()
-    return model
-
-
-def put_watermark(img, wm_encoder=None):
-    if wm_encoder is not None:
-        img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-        img = wm_encoder.encode(img, 'dwtDct')
-        img = Image.fromarray(img[:, :, ::-1])
-    return img
-
-
-def load_replacement(x):
-    try:
-        hwc = x.shape
-        y = Image.open("assets/rick.jpeg").convert("RGB").resize((hwc[1], hwc[0]))
-        y = (np.array(y)/255.0).astype(x.dtype)
-        assert y.shape == x.shape
-        return y
-    except Exception:
-        return x
-
-
-def check_safety(x_image):
-    safety_checker_input = safety_feature_extractor(numpy_to_pil(x_image), return_tensors="pt")
-    x_checked_image, has_nsfw_concept = safety_checker(images=x_image, clip_input=safety_checker_input.pixel_values)
-    assert x_checked_image.shape[0] == len(has_nsfw_concept)
-    for i in range(len(has_nsfw_concept)):
-        if has_nsfw_concept[i]:
-            x_checked_image[i] = load_replacement(x_checked_image[i])
-    return x_checked_image, has_nsfw_concept
-
-
-def main():
+def txt2img_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -136,42 +58,31 @@ def main():
         help="dir to write results to",
         default="outputs/txt2img-samples"
     )
-    parser.add_argument(
-        "--skip_grid",
-        action='store_true',
-        help="do not save a grid, only individual samples. Helpful when evaluating lots of samples",
-    )
-    parser.add_argument(
-        "--skip_save",
-        action='store_true',
-        help="do not save individual samples. For speed measurements.",
-    )
+   
+    
     parser.add_argument(
         "--ddim_steps",
         type=int,
         default=50,
         help="number of ddim sampling steps",
     )
+    
     parser.add_argument(
         "--plms",
         action='store_true',
         help="use plms sampling",
     )
+    
     parser.add_argument(
-        "--laion400m",
-        action='store_true',
-        help="uses the LAION400M model",
+        "--ptq", action="store_true", help="apply post-training quantization"
     )
     parser.add_argument(
-        "--fixed_code",
-        action='store_true',
-        help="if enabled, uses the same starting code across samples ",
+        "--quant_act", action="store_true", 
+        help="if to quantize activations when ptq==True"
     )
     parser.add_argument(
-        "--ddim_eta",
-        type=float,
-        default=0.0,
-        help="ddim eta (eta=0.0 corresponds to deterministic sampling",
+        "--quant_act_ops", action="store_true", 
+        help="if to quantize  ops activations when ptq==True"
     )
     parser.add_argument(
         "--n_iter",
@@ -197,12 +108,7 @@ def main():
         default=4,
         help="latent channels",
     )
-    parser.add_argument(
-        "--f",
-        type=int,
-        default=8,
-        help="downsampling factor",
-    )
+    
     parser.add_argument(
         "--n_samples",
         type=int,
@@ -221,23 +127,7 @@ def main():
         default=7.5,
         help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
     )
-    parser.add_argument(
-        "--from-file",
-        type=str,
-        help="if specified, load prompts from this file",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="configs/stable-diffusion/v1-inference.yaml",
-        help="path to config which constructs model",
-    )
-    parser.add_argument(
-        "--ckpt",
-        type=str,
-        default="models/ldm/stable-diffusion-v1/model.ckpt",
-        help="path to checkpoint of model",
-    )
+   
     parser.add_argument(
         "--seed",
         type=int,
@@ -251,20 +141,7 @@ def main():
         choices=["full", "autocast"],
         default="autocast"
     )
-    # linear quantization configs
-    parser.add_argument(
-        "--ptq", action="store_true", help="apply post-training quantization"
-    )
-    parser.add_argument(
-        "--quant_act", action="store_true", 
-        help="if to quantize activations when ptq==True"
-    )
-
-    parser.add_argument(
-        "--quant_act_ops", action="store_true", 
-        help="if to quantize  ops activations when ptq==True"
-    )
-
+    
     parser.add_argument(
         "--split_to_16bits", action="store_true", 
         help="replace act split with 16bits acts"
@@ -287,7 +164,6 @@ def main():
         default='',
         help="path to fp model",
     )
-
 
     parser.add_argument(
         "--accum_batches", action="store_true", 
@@ -421,14 +297,27 @@ def main():
         "--debug", action="store_true",
         help="debuf with small dataset"
     )
+    
     opt = parser.parse_args()
+    
+    opt.naive_weights_quant = str2bool(opt.naive_weights_quant)
+    opt.rev_order = str2bool(opt.rev_order)
+    opt.gen_val_images = str2bool(opt.gen_val_images)
+    opt.unite_kvq_act = str2bool(opt.unite_kvq_act)
+    opt.unite_skip_ln = str2bool(opt.unite_skip_ln)
+    opt.split = str2bool(opt.split)
+    opt.act16bits_rtn = str2bool(opt.act16bits_rtn)
+    opt.channel_wise_weights = str2bool(opt.channel_wise_weights)
+    opt.save_limvals = str2bool(opt.save_limvals)
 
-    if opt.laion400m:
-        print("Falling back to LAION 400M model...")
-        opt.config = "configs/latent-diffusion/txt2img-1p4B-eval.yaml"
-        opt.ckpt = "models/ldm/text2img-large/model.ckpt"
-        opt.outdir = "outputs/txt2img-samples-laion400m"
+    return opt
+    
 
+
+
+def main():
+    
+    opt = txt2img_arguments()
     seed_everything(opt.seed)
 
     if opt.debug:
@@ -448,18 +337,10 @@ def main():
         ]
     )
 
-    opt.naive_weights_quant = str2bool(opt.naive_weights_quant)
-    opt.rev_order = str2bool(opt.rev_order)
-    opt.gen_val_images = str2bool(opt.gen_val_images)
-    opt.unite_kvq_act = str2bool(opt.unite_kvq_act)
-    opt.unite_skip_ln = str2bool(opt.unite_skip_ln)
-    opt.split = str2bool(opt.split)
-    opt.act16bits_rtn = str2bool(opt.act16bits_rtn)
-    opt.channel_wise_weights = str2bool(opt.channel_wise_weights)
-    opt.save_limvals = str2bool(opt.save_limvals)
+
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
-    p_name = "q-diff-hf1.5_verj" #channel_wise_weights  act_op_skip_ln with  skip_connection identity() , act for norm attn. 16bit rtn.16bit act norm.
+    p_name = "q-diff-hf1.5_verk" #channel_wise_weights  act_op_skip_ln with  skip_connection identity() , act for norm attn. 16bit rtn.16bit act norm.
 
     if opt.fp_model_path:
         p_name = p_name + "-ffp"
