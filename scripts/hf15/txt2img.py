@@ -21,7 +21,7 @@ from qdiff import (
     QuantModel, QuantModule, BaseQuantBlock, 
     block_reconstruction, layer_reconstruction,unetHF_reconstruction,
 )
-from qdiff.quant_model import init_qnn_from_fp_model,init_qnn_from_opt_params
+from qdiff.quant_model import init_qnn_from_fp_model,init_qnn_from_opt_params,init_qnn_from_qdiff_opt
 from qdiff.adaptive_rounding import AdaRoundQuantizer
 from qdiff.quant_layer import UniformAffineQuantizer
 from qdiff.utils import resume_cali_model, get_train_samples
@@ -275,6 +275,11 @@ def main():
         default='true',
         help="generate validation images"
     )
+    parser.add_argument(
+        "--save_limvals", type=str,
+        default='true',
+        help="save limvals"
+    )
 
     parser.add_argument(
         "--fp_model_path",
@@ -451,6 +456,7 @@ def main():
     opt.split = str2bool(opt.split)
     opt.act16bits_rtn = str2bool(opt.act16bits_rtn)
     opt.channel_wise_weights = str2bool(opt.channel_wise_weights)
+    opt.save_limvals = str2bool(opt.save_limvals)
 
     #p_name = "q-diff" if not opt.quant_act_ops else "q-diff-act-ops"
     p_name = "q-diff-hf1.5_verj" #channel_wise_weights  act_op_skip_ln with  skip_connection identity() , act for norm attn. 16bit rtn.16bit act norm.
@@ -669,8 +675,6 @@ def main():
         #torch.save(wq_params, os.path.join(outpath, "wq_params.pth"))
         torch.save(opt, os.path.join(outpath, "opt.pth"))
 
-        #qdiff_matmul1_limvals,qdiff_matmul2_limvals,qdiff_convs_limvals,qdiff_lnorm_limvals = uu.save_limvas_to_path(
-        #            os.path.join(outpath ,'limvals'))
             
 
     n_samples = opt.n_samples 
@@ -690,11 +694,26 @@ def main():
                     #upload image to wandb
     wandb.log({"grid act and weights": [wandb.Image(I)]})
     if opt.gen_val_images :
-        I = gen_images(pipe, num_images = 4 if opt.debug else 16,num_inference_steps = opt.ddim_steps,
+        Igrid = gen_images(pipe, num_images = 4 if opt.debug else 16,num_inference_steps = opt.ddim_steps,
                         output_image_path = None,negative_prompt='dafualt')
-        I.save(os.path.join(outpath, 'grid-val_images.png'))
-        wandb.log({"grid val images": [wandb.Image(I)]})
+        Igrid.save(os.path.join(outpath, 'grid-val_images.png'))
+        wandb.log({"grid val images": [wandb.Image(Igrid)]})
 
+    if opt.save_limvals:
+        logger.info(f"Saving limvals to {outpath}")
+        qnn,pipe,uu = init_qnn_from_qdiff_opt(outpath)    
+        qdiff_matmul1_limvals,qdiff_matmul2_limvals,qdiff_convs_limvals,qdiff_lnorm_limvals = uu.save_limvas_to_path(
+                        os.path.join(outpath ,'limvals'),save_csv =True)
+        
+        qnn.set_quant_state(weight_quant=True, act_quant=True)
+        pipe.unet = qnn.model
+        pipe.to(device)        
+        generator = torch.Generator("cuda").manual_seed(42)  # 
+        Itest = pipe(opt.prompt,num_inference_steps=opt.ddim_steps,generator= generator).images[0]
+        assert np.sum(np.abs(np.array(Itest)-np.array(I))) == 0, "loading from checkpoint is not correct"
+        logger.info(f"loading from checkpoint is correct")
+
+            
 
 
 
